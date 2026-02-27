@@ -99,7 +99,7 @@ func run(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	return startServer(addr, files)
+	return startServer(cmd.Context(), addr, files)
 }
 
 func resolveFiles(args []string) ([]string, error) {
@@ -175,7 +175,7 @@ func tryAddToExisting(addr string, files []string) bool {
 	return true
 }
 
-func startServer(addr string, files []string) error {
+func startServer(ctx context.Context, addr string, files []string) error {
 	state := server.NewState()
 
 	for _, f := range files {
@@ -195,7 +195,7 @@ func startServer(addr string, files []string) error {
 		return fmt.Errorf("cannot listen on %s: %w", addr, err)
 	}
 
-	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	ctx, cancel := donegroup.WithCancel(sigCtx)
