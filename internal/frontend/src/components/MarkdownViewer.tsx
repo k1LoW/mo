@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import { rehypeGithubAlerts } from "rehype-github-alerts";
 import { codeToHtml } from "shiki";
 import mermaid from "mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
@@ -243,7 +244,7 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
 
   return (
     <article className="markdown-body">
-      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={components}>
+      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeGithubAlerts]} components={components}>
         {content}
       </Markdown>
     </article>
