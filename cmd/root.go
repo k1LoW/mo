@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -148,7 +149,7 @@ func tryAddToExisting(addr string, files []string) bool {
 			"group": target,
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to marshal request for %s: %v\n", f, err)
+			slog.Warn("failed to marshal request", "file", f, "error", err)
 			continue
 		}
 		resp, err := client.Post(
@@ -157,18 +158,18 @@ func tryAddToExisting(addr string, files []string) bool {
 			bytes.NewReader(body),
 		)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to add file %s: %v\n", f, err)
+			slog.Warn("failed to add file", "file", f, "error", err)
 			continue
 		}
 		resp.Body.Close()
 	}
 
-	fmt.Fprintf(os.Stderr, "Added %d file(s) to existing server at %s\n", len(files), addr)
+	slog.Info("added files to existing server", "count", len(files), "addr", addr)
 
 	if isNewGroup {
 		url := fmt.Sprintf("http://%s/%s", addr, target)
 		if err := browser.OpenURL(url); err != nil {
-			fmt.Fprintf(os.Stderr, "Could not open browser: %v\n", err)
+			slog.Warn("could not open browser", "error", err)
 		}
 	}
 
@@ -183,7 +184,7 @@ func startServer(ctx context.Context, addr string, files []string) error {
 	defer func() {
 		cancel()
 		if err := donegroup.WaitWithTimeout(ctx, 5*time.Second); err != nil {
-			fmt.Fprintf(os.Stderr, "shutdown: %v\n", err)
+			slog.Error("shutdown error", "error", err)
 		}
 	}()
 
@@ -216,9 +217,9 @@ func startServer(ctx context.Context, addr string, files []string) error {
 	}
 
 	go func() {
-		fmt.Fprintf(os.Stderr, "Serving on http://%s\n", addr)
+		slog.Info("serving", "url", fmt.Sprintf("http://%s", addr))
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+			slog.Error("server error", "error", err)
 		}
 	}()
 
@@ -227,11 +228,11 @@ func startServer(ctx context.Context, addr string, files []string) error {
 		url = fmt.Sprintf("%s/%s", url, target)
 	}
 	if err := browser.OpenURL(url); err != nil {
-		fmt.Fprintf(os.Stderr, "Could not open browser: %v\n", err)
+		slog.Warn("could not open browser", "error", err)
 	}
 
 	<-ctx.Done()
-	fmt.Fprintln(os.Stderr, "\nShutting down...")
+	slog.Info("shutting down")
 
 	return nil
 }
