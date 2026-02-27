@@ -176,7 +176,18 @@ func tryAddToExisting(addr string, files []string) bool {
 }
 
 func startServer(ctx context.Context, addr string, files []string) error {
-	state := server.NewState()
+	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	ctx, cancel := donegroup.WithCancel(sigCtx)
+	defer func() {
+		cancel()
+		if err := donegroup.WaitWithTimeout(ctx, 5*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "shutdown: %v\n", err)
+		}
+	}()
+
+	state := server.NewState(ctx)
 
 	for _, f := range files {
 		state.AddFile(f, target)
@@ -195,20 +206,11 @@ func startServer(ctx context.Context, addr string, files []string) error {
 		return fmt.Errorf("cannot listen on %s: %w", addr, err)
 	}
 
-	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	ctx, cancel := donegroup.WithCancel(sigCtx)
-	defer func() {
-		cancel()
-		if err := donegroup.WaitWithTimeout(ctx, 5*time.Second); err != nil {
-			fmt.Fprintf(os.Stderr, "shutdown: %v\n", err)
-		}
-	}()
-
 	if err := donegroup.Cleanup(ctx, func() error {
 		state.CloseAllSubscribers()
-		return srv.Shutdown(context.Background())
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		return srv.Shutdown(shutdownCtx)
 	}); err != nil {
 		return fmt.Errorf("failed to register cleanup: %w", err)
 	}
