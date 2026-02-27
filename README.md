@@ -33,6 +33,8 @@ To run a completely separate session, use a different port:
 $ mo draft.md -p 6276
 ```
 
+![Multiple files with sidebar](images/multiple-files.png)
+
 ### Groups
 
 Files can be organized into named groups using the `--target` (`-t`) flag. Each group gets its own URL path and sidebar.
@@ -42,6 +44,8 @@ $ mo spec.md --target design      # Opens at http://localhost:6275/design
 $ mo api.md --target design       # Adds to the "design" group
 $ mo notes.md --target notes      # Opens at http://localhost:6275/notes
 ```
+
+![Group view](images/groups.png)
 
 ### Flags
 
