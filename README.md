@@ -4,9 +4,15 @@
 
 ## Install
 
+**homebrew tap:**
+
 ```console
 $ brew install k1LoW/tap/mo
 ```
+
+**manually:**
+
+Download binary from [releases page](https://github.com/k1LoW/mo/releases)
 
 ## Usage
 
