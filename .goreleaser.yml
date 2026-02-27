@@ -72,7 +72,7 @@ nfpms:
       - mo-linux
     homepage: https://github.com/k1LoW/mo
     maintainer: Ken'ichiro Oyama <k1lowxb@gmail.com>
-    description: "A CLI tool that opens Markdown files in a browser with live-reload"
+    description: "mo is a Markdown viewer that opens .md files in a browser"
     license: MIT
     formats:
       - deb
