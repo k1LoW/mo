@@ -8,23 +8,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-Requires Go and [pnpm](https://pnpm.io/).
+Requires Go and [pnpm](https://pnpm.io/). Node.js version is managed via `pnpm.executionEnv.nodeVersion` in `internal/frontend/package.json`.
 
 ```bash
-# Full build (frontend + Go binary)
+# Full build (frontend + Go binary, with ldflags)
 make build
 
 # Dev: build frontend then run with args
 make dev ARGS="testdata/basic.md"
 
 # Frontend code generation only (called by make build/dev via go generate)
-go generate ./internal/static/
+make generate
 
-# Go binary only (requires frontend already built)
-go build -o mo .
+# Run tests
+make test
+
+# Run linters (golangci-lint + gostyle)
+make lint
+
+# CI target (install dev deps + generate + test)
+make ci
 ```
-
-There are currently no Go tests or linters configured. TypeScript strict mode is enabled in `tsconfig.json`.
 
 ## Architecture
 
@@ -33,11 +37,12 @@ There are currently no Go tests or linters configured. TypeScript strict mode is
 - `cmd/root.go` — CLI entry point (Cobra). Handles single-instance detection: if a server is already running on the port, adds files via HTTP API instead of starting a new server.
 - `internal/server/server.go` — HTTP server, state management (mutex-guarded), SSE for live-reload, file watcher (fsnotify). All API routes use `/_/` prefix to avoid collision with SPA route paths (group names).
 - `internal/static/static.go` — `go:generate` runs the frontend build, then `go:embed` embeds the output from `internal/static/dist/`.
-- `internal/frontend/` — Vite 7 + React 19 + TypeScript + Tailwind CSS v4 SPA. Build output goes to `internal/static/dist/` (configured in `vite.config.ts`).
+- `internal/frontend/` — Vite + React 19 + TypeScript + Tailwind CSS v4 SPA. Build output goes to `internal/static/dist/` (configured in `vite.config.ts`).
+- `version/version.go` — Version info, updated by tagpr on release. Build embeds revision via ldflags.
 
 ## Frontend
 
-- Package manager: **pnpm**
+- Package manager: **pnpm** (version specified in `internal/frontend/package.json` `packageManager` field)
 - Markdown rendering: `react-markdown` + `remark-gfm` + `rehype-raw` + `@shikijs/rehype` (syntax highlighting) + `mermaid` (diagram rendering)
 - SPA routing via `window.location.pathname` (no router library)
 - Key components: `App.tsx` (routing/state), `Sidebar.tsx` (file list), `MarkdownViewer.tsx` (rendering), `ThemeToggle.tsx` (dark/light mode), `GroupDropdown.tsx` (group switcher)
@@ -53,3 +58,10 @@ There are currently no Go tests or linters configured. TypeScript strict mode is
 ## API Conventions
 
 All internal endpoints use `/_/api/` prefix and SSE uses `/_/events`. The `/_/` prefix avoids collisions with user-facing group name routes.
+
+## CI/CD
+
+- **CI**: golangci-lint (via reviewdog), gostyle, `make ci` (test + coverage), octocov
+- **Release**: tagpr for automated tagging, goreleaser for cross-platform builds. The `go generate` step (frontend build) runs in goreleaser's `before.hooks`.
+- **License check**: Trivy scans for license issues
+- CI requires pnpm setup (`pnpm/action-setup`) before any Go build step because `go generate` triggers the frontend build.
