@@ -19,7 +19,7 @@ import (
 type FileEntry struct {
 	Name string `json:"name"`
 	ID   int    `json:"id"`
-	Path string `json:"-"`
+	Path string `json:"path"`
 }
 
 type Group struct {

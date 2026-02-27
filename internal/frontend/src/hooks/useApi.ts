@@ -1,6 +1,7 @@
 export interface FileEntry {
   name: string;
   id: number;
+  path: string;
 }
 
 export interface Group {
