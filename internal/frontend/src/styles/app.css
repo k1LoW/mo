@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+@theme {
+  --color-gh-bg: #ffffff;
+  --color-gh-bg-secondary: #f6f8fa;
+  --color-gh-bg-sidebar: #f0f2f5;
+  --color-gh-bg-hover: #e1e4e8;
+  --color-gh-bg-active: #dce0e5;
+  --color-gh-text: #1f2328;
+  --color-gh-text-secondary: #636c76;
+  --color-gh-border: #d0d7de;
+  --color-gh-header-bg: #f6f8fa;
+  --color-gh-header-text: #1f2328;
+  --color-gh-header-border: #d0d7de;
+}
+
+[data-theme="dark"] {
+  --color-gh-bg: #0d1117;
+  --color-gh-bg-secondary: #161b22;
+  --color-gh-bg-sidebar: #161b22;
+  --color-gh-bg-hover: #21262d;
+  --color-gh-bg-active: #30363d;
+  --color-gh-text: #e6edf3;
+  --color-gh-text-secondary: #8b949e;
+  --color-gh-border: #30363d;
+  --color-gh-header-bg: #161b22;
+  --color-gh-header-text: #e6edf3;
+  --color-gh-header-border: #30363d;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+.markdown-body {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+/* Undo Tailwind preflight's display:block on img inside markdown
+   so that inline badge images render on one line like GitHub */
+.markdown-body img {
+  display: initial;
+}
+
+/* Undo Tailwind preflight's list-style:none so that
+   bullets and numbers render inside markdown */
+.markdown-body ul {
+  list-style-type: disc;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+}
+
+[data-theme="light"] .markdown-body {
+  color-scheme: light;
+  --fgColor-accent: #0969da;
+  --fgColor-danger: #d1242f;
+  --fgColor-default: #1f2328;
+  --fgColor-muted: #59636e;
+  --fgColor-attention: #9a6700;
+  --fgColor-done: #8250df;
+  --fgColor-success: #1a7f37;
+  --bgColor-default: #ffffff;
+  --bgColor-muted: #f6f8fa;
+  --bgColor-neutral-muted: #818b981f;
+  --bgColor-attention-muted: #fff8c5;
+  --borderColor-default: #d1d9e0;
+  --borderColor-muted: #d1d9e0b3;
+  --borderColor-accent-emphasis: #0969da;
+  --borderColor-attention-emphasis: #9a6700;
+  --borderColor-danger-emphasis: #cf222e;
+  --borderColor-done-emphasis: #8250df;
+  --borderColor-success-emphasis: #1a7f37;
+  --borderColor-neutral-muted: var(--borderColor-muted);
+  --focus-outlineColor: var(--borderColor-accent-emphasis);
+  --color-prettylights-syntax-comment: #59636e;
+  --color-prettylights-syntax-constant: #0550ae;
+  --color-prettylights-syntax-constant-other-reference-link: #0a3069;
+  --color-prettylights-syntax-entity: #6639ba;
+  --color-prettylights-syntax-entity-tag: #0550ae;
+  --color-prettylights-syntax-keyword: #cf222e;
+  --color-prettylights-syntax-string: #0a3069;
+  --color-prettylights-syntax-string-regexp: #116329;
+  --color-prettylights-syntax-variable: #953800;
+  --color-prettylights-syntax-brackethighlighter-angle: #59636e;
+  --color-prettylights-syntax-brackethighlighter-unmatched: #82071e;
+  --color-prettylights-syntax-carriage-return-bg: #cf222e;
+  --color-prettylights-syntax-carriage-return-text: #f6f8fa;
+  --color-prettylights-syntax-markup-bold: #1f2328;
+  --color-prettylights-syntax-markup-italic: #1f2328;
+  --color-prettylights-syntax-markup-changed-bg: #ffd8b5;
+  --color-prettylights-syntax-markup-changed-text: #953800;
+  --color-prettylights-syntax-markup-deleted-bg: #ffebe9;
+  --color-prettylights-syntax-markup-deleted-text: #82071e;
+  --color-prettylights-syntax-markup-heading: #0550ae;
+  --color-prettylights-syntax-markup-ignored-bg: #0550ae;
+  --color-prettylights-syntax-markup-ignored-text: #d1d9e0;
+  --color-prettylights-syntax-markup-inserted-bg: #dafbe1;
+  --color-prettylights-syntax-markup-inserted-text: #116329;
+  --color-prettylights-syntax-markup-list: #3b2300;
+  --color-prettylights-syntax-meta-diff-range: #8250df;
+  --color-prettylights-syntax-storage-modifier-import: #1f2328;
+  --color-prettylights-syntax-sublimelinter-gutter-mark: #818b98;
+  --color-prettylights-syntax-invalid-illegal-bg: var(--bgColor-danger-muted);
+  --color-prettylights-syntax-invalid-illegal-text: var(--fgColor-danger);
+}
+
+[data-theme="dark"] .markdown-body {
+  color-scheme: dark;
+  --fgColor-accent: #4493f8;
+  --fgColor-danger: #f85149;
+  --fgColor-default: #f0f6fc;
+  --fgColor-muted: #9198a1;
+  --fgColor-attention: #d29922;
+  --fgColor-done: #ab7df8;
+  --fgColor-success: #3fb950;
+  --bgColor-default: #0d1117;
+  --bgColor-muted: #151b23;
+  --bgColor-neutral-muted: #656c7633;
+  --bgColor-attention-muted: #bb800926;
+  --borderColor-default: #3d444d;
+  --borderColor-muted: #3d444db3;
+  --borderColor-accent-emphasis: #1f6feb;
+  --borderColor-attention-emphasis: #9e6a03;
+  --borderColor-danger-emphasis: #da3633;
+  --borderColor-done-emphasis: #8957e5;
+  --borderColor-success-emphasis: #238636;
+  --borderColor-neutral-muted: var(--borderColor-muted);
+  --focus-outlineColor: var(--borderColor-accent-emphasis);
+  --color-prettylights-syntax-comment: #9198a1;
+  --color-prettylights-syntax-constant: #79c0ff;
+  --color-prettylights-syntax-constant-other-reference-link: #a5d6ff;
+  --color-prettylights-syntax-entity: #d2a8ff;
+  --color-prettylights-syntax-entity-tag: #7ee787;
+  --color-prettylights-syntax-keyword: #ff7b72;
+  --color-prettylights-syntax-string: #a5d6ff;
+  --color-prettylights-syntax-string-regexp: #7ee787;
+  --color-prettylights-syntax-variable: #ffa657;
+  --color-prettylights-syntax-brackethighlighter-angle: #9198a1;
+  --color-prettylights-syntax-brackethighlighter-unmatched: #f85149;
+  --color-prettylights-syntax-carriage-return-bg: #b62324;
+  --color-prettylights-syntax-carriage-return-text: #f0f6fc;
+  --color-prettylights-syntax-markup-bold: #f0f6fc;
+  --color-prettylights-syntax-markup-italic: #f0f6fc;
+  --color-prettylights-syntax-markup-changed-bg: #5a1e02;
+  --color-prettylights-syntax-markup-changed-text: #ffdfb6;
+  --color-prettylights-syntax-markup-deleted-bg: #67060c;
+  --color-prettylights-syntax-markup-deleted-text: #ffdcd7;
+  --color-prettylights-syntax-markup-heading: #1f6feb;
+  --color-prettylights-syntax-markup-ignored-bg: #1158c7;
+  --color-prettylights-syntax-markup-ignored-text: #f0f6fc;
+  --color-prettylights-syntax-markup-inserted-bg: #033a16;
+  --color-prettylights-syntax-markup-inserted-text: #aff5b4;
+  --color-prettylights-syntax-markup-list: #f2cc60;
+  --color-prettylights-syntax-meta-diff-range: #d2a8ff;
+  --color-prettylights-syntax-storage-modifier-import: #f0f6fc;
+  --color-prettylights-syntax-sublimelinter-gutter-mark: #3d444d;
+  --color-prettylights-syntax-invalid-illegal-bg: var(--bgColor-danger-muted);
+  --color-prettylights-syntax-invalid-illegal-text: var(--fgColor-danger);
+}
