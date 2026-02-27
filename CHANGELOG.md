@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.2.0](https://github.com/k1LoW/mo/compare/v0.1.1...v0.2.0) - 2026-02-27
+### New Features 🎉
+- feat: show file path tooltip on sidebar hover by @k1LoW in https://github.com/k1LoW/mo/pull/8
+
 ## [v0.1.1](https://github.com/k1LoW/mo/compare/v0.1.0...v0.1.1) - 2026-02-27
 
 ## [v0.1.0](https://github.com/k1LoW/mo/commits/v0.1.0) - 2026-02-27
