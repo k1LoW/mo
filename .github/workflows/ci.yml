@@ -1,0 +1,58 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  job-test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          package_json_file: internal/frontend/package.json
+
+      - name: Generate frontend assets
+        run: go generate ./internal/static/
+
+      - name: Run lint
+        if: runner.os == 'Linux'
+        uses: reviewdog/action-golangci-lint@f9bba13753278f6a73b27a56a3ffb1bfda90ed71 # v2.8.0
+        with:
+          fail_level: error
+          go_version_file: go.mod
+          cache: false
+
+      - name: Run gostyle
+        if: runner.os == 'Linux'
+        uses: k1LoW/gostyle-action@e1b847d37b3041c5fdb8b911bcf00b350779ca61 # v1.5.1
+        with:
+          config-file: .gostyle.yml
+
+      - name: Run tests
+        run: make ci
+
+      - name: Run octocov
+        if: runner.os == 'Linux'
+        uses: k1LoW/octocov-action@73d561f65d59e66899ed5c87e4621a913b5d5c20 # v1.5.0
