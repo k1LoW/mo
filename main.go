@@ -21,8 +21,14 @@ THE SOFTWARE.
 */
 package main
 
-import "github.com/k1LoW/mo/cmd"
+import (
+	"log/slog"
+	"os"
+
+	"github.com/k1LoW/mo/cmd"
+)
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 	cmd.Execute()
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,7 +45,7 @@ type State struct {
 func NewState(ctx context.Context) *State {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Printf("warning: failed to create file watcher: %v", err)
+		slog.Warn("failed to create file watcher", "error", err)
 	}
 
 	s := &State{
@@ -91,7 +91,7 @@ func (s *State) AddFile(absPath, groupName string) *FileEntry {
 
 	if s.watcher != nil {
 		if err := s.watcher.Add(absPath); err != nil {
-			log.Printf("warning: failed to watch %s: %v", absPath, err)
+			slog.Warn("failed to watch file", "path", absPath, "error", err)
 		}
 	}
 
@@ -278,7 +278,7 @@ func handleAddFile(state *State) http.HandlerFunc {
 		entry := state.AddFile(absPath, group)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(entry); err != nil {
-			log.Printf("failed to encode response: %v", err)
+			slog.Error("failed to encode response", "error", err)
 		}
 	}
 }
@@ -288,7 +288,7 @@ func handleGroups(state *State) http.HandlerFunc {
 		groups := state.Groups()
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(groups); err != nil {
-			log.Printf("failed to encode response: %v", err)
+			slog.Error("failed to encode response", "error", err)
 		}
 	}
 }
@@ -319,7 +319,7 @@ func handleFileContent(state *State) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Printf("failed to encode response: %v", err)
+			slog.Error("failed to encode response", "error", err)
 		}
 	}
 }
@@ -383,7 +383,7 @@ func handleOpenFile(state *State) http.HandlerFunc {
 		newEntry := state.AddFile(absPath, groupName)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(newEntry); err != nil {
-			log.Printf("failed to encode response: %v", err)
+			slog.Error("failed to encode response", "error", err)
 		}
 	}
 }
@@ -422,7 +422,8 @@ func handleSSE(state *State) http.HandlerFunc {
 func handleSPA() http.HandlerFunc {
 	distFS, err := fs.Sub(static.Frontend, "dist")
 	if err != nil {
-		log.Fatalf("failed to create sub filesystem: %v", err)
+		slog.Error("failed to create sub filesystem", "error", err)
+		os.Exit(1)
 	}
 	fileServer := http.FileServer(http.FS(distFS))
 
