@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -13,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/k1LoW/donegroup"
 	"github.com/k1LoW/mo/internal/static"
 )
 
@@ -40,7 +42,7 @@ type State struct {
 	watcher     *fsnotify.Watcher
 }
 
-func NewState() *State {
+func NewState(ctx context.Context) *State {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Printf("warning: failed to create file watcher: %v", err)
@@ -54,7 +56,10 @@ func NewState() *State {
 	}
 
 	if w != nil {
-		go s.watchLoop()
+		donegroup.Go(ctx, func() error {
+			s.watchLoop()
+			return nil
+		})
 	}
 
 	return s
