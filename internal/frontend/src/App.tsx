@@ -81,6 +81,12 @@ export function App() {
     }
   }, [groups, activeGroup]);
 
+  useEffect(() => {
+    const group = groups.find((g) => g.name === activeGroup);
+    const file = group?.files.find((f) => f.id === activeFileId);
+    document.title = file ? file.name : "mo";
+  }, [groups, activeGroup, activeFileId]);
+
   // Auto open/close sidebar based on file count in active group
   useEffect(() => {
     const group = groups.find((g) => g.name === activeGroup);
