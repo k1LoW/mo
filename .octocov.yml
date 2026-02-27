@@ -1,9 +1,18 @@
+coverage:
+  paths:
+    - coverage.out
+    - internal/frontend/coverage/lcov.info
 codeToTestRatio:
   code:
     - '**/*.go'
     - '!**/*_test.go'
+    - 'internal/frontend/src/**/*.ts'
+    - 'internal/frontend/src/**/*.tsx'
+    - '!internal/frontend/src/**/*.test.ts'
+    - '!internal/frontend/node_modules/**'
   test:
     - '**/*_test.go'
+    - 'internal/frontend/src/**/*.test.ts'
 testExecutionTime:
   if: true
 diff:

@@ -6,16 +6,7 @@ import { GroupDropdown } from "./components/GroupDropdown";
 import { useSSE } from "./hooks/useSSE";
 import type { Group } from "./hooks/useApi";
 import { fetchGroups } from "./hooks/useApi";
-
-function allFileIds(groups: Group[]): Set<number> {
-  const ids = new Set<number>();
-  for (const g of groups) {
-    for (const f of g.files) {
-      ids.add(f.id);
-    }
-  }
-  return ids;
-}
+import { allFileIds, parseGroupFromPath } from "./utils/groups";
 
 export function App() {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -64,9 +55,9 @@ export function App() {
   }, [loadGroups]);
 
   useEffect(() => {
-    const path = window.location.pathname.replace(/^\//, "").replace(/\/$/, "");
-    if (path) {
-      setActiveGroup(path);
+    const group = parseGroupFromPath(window.location.pathname);
+    if (group !== "default") {
+      setActiveGroup(group);
     }
   }, []);
 

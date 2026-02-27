@@ -11,6 +11,7 @@ generate:
 	go generate ./internal/static/
 
 test:
+	cd internal/frontend && pnpm install && pnpm run test:coverage
 	go test ./... -coverprofile=coverage.out -covermode=count -count=1
 
 build: generate

@@ -13,4 +13,13 @@ export default defineConfig({
       "/_/": "http://localhost:6275",
     },
   },
+  test: {
+    include: ["src/__tests__/**/*.test.ts"],
+    coverage: {
+      provider: "v8",
+      include: ["src/utils/**"],
+      reporter: ["text", "lcov"],
+      reportsDirectory: "coverage",
+    },
+  },
 });

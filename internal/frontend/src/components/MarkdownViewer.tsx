@@ -5,6 +5,7 @@ import rehypeRaw from "rehype-raw";
 import { codeToHtml } from "shiki";
 import mermaid from "mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
+import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
 
@@ -176,13 +177,13 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
     () => ({
       pre: ({ children }) => <>{children}</>,
       code: ({ className, children, ...props }) => {
-        const match = /language-(\w+)/.exec(className || "");
+        const language = extractLanguage(className);
         const code = String(children).replace(/\n$/, "");
-        if (match) {
-          if (match[1] === "mermaid") {
+        if (language) {
+          if (language === "mermaid") {
             return <MermaidBlock code={code} />;
           }
-          return <CodeBlock language={match[1]} code={code} />;
+          return <CodeBlock language={language} code={code} />;
         }
         return (
           <code className={className} {...props}>
@@ -191,48 +192,46 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
         );
       },
       img: ({ src, alt, ...props }) => {
-        const resolvedSrc =
-          src && !src.startsWith("http://") && !src.startsWith("https://")
-            ? `/_/api/files/${fileId}/raw/${src}`
-            : src;
-        return <img src={resolvedSrc} alt={alt} {...props} />;
+        return <img src={resolveImageSrc(src, fileId)} alt={alt} {...props} />;
       },
       a: ({ href, children, ...props }) => {
-        if (!href || href.startsWith("http://") || href.startsWith("https://") || href.startsWith("#")) {
-          return (
-            <a href={href} target={href?.startsWith("#") ? undefined : "_blank"} rel={href?.startsWith("#") ? undefined : "noopener noreferrer"} {...props}>
-              {children}
-            </a>
-          );
+        const resolved = resolveLink(href, fileId);
+        switch (resolved.type) {
+          case "external":
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                {children}
+              </a>
+            );
+          case "hash":
+            return (
+              <a href={href} {...props}>
+                {children}
+              </a>
+            );
+          case "markdown":
+            return (
+              <a
+                href={href}
+                onClick={(e) => handleLinkClick(e, resolved.hrefPath)}
+                {...props}
+              >
+                {children}
+              </a>
+            );
+          case "file":
+            return (
+              <a href={resolved.rawUrl} {...props}>
+                {children}
+              </a>
+            );
+          case "passthrough":
+            return (
+              <a href={href} {...props}>
+                {children}
+              </a>
+            );
         }
-        // Strip anchor from href for file detection
-        const hrefPath = href.split("#")[0];
-        if (hrefPath.endsWith(".md")) {
-          return (
-            <a
-              href={href}
-              onClick={(e) => handleLinkClick(e, hrefPath)}
-              {...props}
-            >
-              {children}
-            </a>
-          );
-        }
-        // Only rewrite to raw API if the path looks like a file (has an extension)
-        const basename = hrefPath.split("/").pop() || "";
-        if (basename.includes(".")) {
-          return (
-            <a href={`/_/api/files/${fileId}/raw/${href}`} {...props}>
-              {children}
-            </a>
-          );
-        }
-        // Directories or extensionless paths: leave as-is
-        return (
-          <a href={href} {...props}>
-            {children}
-          </a>
-        );
       },
     }),
     [fileId, handleLinkClick],
