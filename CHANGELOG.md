@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.3.1](https://github.com/k1LoW/mo/compare/v0.3.0...v0.3.1) - 2026-02-27
+### Other Changes
+- refactor: improve donegroup usage for graceful shutdown by @k1LoW in https://github.com/k1LoW/mo/pull/13
+- refactor: replace log and fmt.Fprintf(os.Stderr) with slog by @k1LoW in https://github.com/k1LoW/mo/pull/14
+
 ## [v0.3.0](https://github.com/k1LoW/mo/compare/v0.2.0...v0.3.0) - 2026-02-27
 ### New Features 🎉
 - feat: support GitHub Alerts (admonitions) by @k1LoW in https://github.com/k1LoW/mo/pull/11
