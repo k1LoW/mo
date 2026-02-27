@@ -26,8 +26,51 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "mo [flags] [FILE ...]",
-	Short:   "mo is a Markdown viewer that opens .md files in a browser.",
+	Use:   "mo [flags] [FILE ...]",
+	Short: "mo is a Markdown viewer that opens .md files in a browser.",
+	Long: `mo is a Markdown viewer that opens .md files in a browser with live-reload.
+
+It starts an HTTP server, renders Markdown files using a built-in React SPA,
+and automatically refreshes the browser when files are saved.
+
+Examples:
+  mo README.md                          Open a single file
+  mo README.md CHANGELOG.md docs/*.md   Open multiple files
+  mo spec.md --target design            Open in a named group
+  mo draft.md --port 6276               Use a different port
+
+Single Server, Multiple Files:
+  By default, mo runs a single server process on port 6275.
+  If a server is already running on the same port, subsequent mo invocations
+  add files to the existing session instead of starting a new one.
+
+  $ mo README.md          # Starts a server and opens the browser
+  $ mo CHANGELOG.md       # Adds the file to the running server
+
+  To run a completely separate session, use a different port:
+
+  $ mo draft.md -p 6276
+
+Groups:
+  Files can be organized into named groups using the --target (-t) flag.
+  Each group gets its own URL path (e.g., http://localhost:6275/design)
+  and its own sidebar in the browser.
+
+  $ mo spec.md --target design      # Opens at /design
+  $ mo api.md --target design       # Adds to the "design" group
+  $ mo notes.md --target notes      # Opens at /notes
+
+  If no --target is specified, files are added to the "default" group.
+
+Live-Reload:
+  mo watches all opened files for changes using filesystem notifications.
+  When a file is saved, the browser automatically re-renders the content.
+
+Supported Markdown Features:
+  - GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks)
+  - Syntax-highlighted code blocks (via Shiki)
+  - Mermaid diagrams
+  - Raw HTML`,
 	Args:    cobra.ArbitraryArgs,
 	RunE:    run,
 	Version: version.Version,
