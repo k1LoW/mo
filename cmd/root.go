@@ -115,8 +115,10 @@ func resolveFiles(args []string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cannot resolve path %s: %w", arg, err)
 		}
-		if _, err := os.Stat(absPath); err != nil {
+		if stat, err := os.Stat(absPath); err != nil {
 			return nil, fmt.Errorf("file not found: %s", absPath)
+		} else if stat.IsDir() {
+			return nil, fmt.Errorf("%s is a directory", absPath)
 		}
 		files = append(files, absPath)
 	}
