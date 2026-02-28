@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.3.2](https://github.com/k1LoW/mo/compare/v0.3.1...v0.3.2) - 2026-02-28
+### Fix bug 🐛
+- fix: serialize mermaid rendering to fix multiple diagrams by @k1LoW in https://github.com/k1LoW/mo/pull/15
+
 ## [v0.3.1](https://github.com/k1LoW/mo/compare/v0.3.0...v0.3.1) - 2026-02-27
 ### Other Changes
 - refactor: improve donegroup usage for graceful shutdown by @k1LoW in https://github.com/k1LoW/mo/pull/13
