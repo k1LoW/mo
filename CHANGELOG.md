@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.5.0](https://github.com/k1LoW/mo/compare/v0.4.1...v0.5.0) - 2026-02-28
+### New Features 🎉
+- feat: add raw markdown view toggle by @k1LoW in https://github.com/k1LoW/mo/pull/22
+- feat: add table of contents right panel by @k1LoW in https://github.com/k1LoW/mo/pull/24
+
 ## [v0.4.1](https://github.com/k1LoW/mo/compare/v0.4.0...v0.4.1) - 2026-02-28
 ### Fix bug 🐛
 - fix: reject directory paths passed as file arguments by @matsuyoshi30 in https://github.com/k1LoW/mo/pull/20
