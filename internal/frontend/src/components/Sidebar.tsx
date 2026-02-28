@@ -69,7 +69,7 @@ export function Sidebar({
       className="relative bg-gh-bg-sidebar border-r border-gh-border flex flex-col overflow-y-auto shrink-0"
       style={{ width }}
     >
-      <nav className="flex flex-col py-1">
+      <nav className="flex flex-col pb-1">
         {files.map((f) => (
           <button
             key={f.id}
