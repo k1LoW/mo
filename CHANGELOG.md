@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.4.1](https://github.com/k1LoW/mo/compare/v0.4.0...v0.4.1) - 2026-02-28
+### Fix bug 🐛
+- fix: reject directory paths passed as file arguments by @matsuyoshi30 in https://github.com/k1LoW/mo/pull/20
+
 ## [v0.4.0](https://github.com/k1LoW/mo/compare/v0.3.2...v0.4.0) - 2026-02-28
 ### New Features 🎉
 - feat: add --open and --no-open flags to control browser opening by @k1LoW in https://github.com/k1LoW/mo/pull/19
