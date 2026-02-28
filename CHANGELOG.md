@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.4.0](https://github.com/k1LoW/mo/compare/v0.3.2...v0.4.0) - 2026-02-28
+### New Features 🎉
+- feat: add --open and --no-open flags to control browser opening by @k1LoW in https://github.com/k1LoW/mo/pull/19
+
 ## [v0.3.2](https://github.com/k1LoW/mo/compare/v0.3.1...v0.3.2) - 2026-02-28
 ### Fix bug 🐛
 - fix: serialize mermaid rendering to fix multiple diagrams by @k1LoW in https://github.com/k1LoW/mo/pull/15
