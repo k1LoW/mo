@@ -32,25 +32,39 @@ function ensureMermaidInit() {
 }
 
 let mermaidCounter = 0;
+let mermaidQueue: Promise<void> = Promise.resolve();
 
 function cleanupMermaidErrors() {
   document.querySelectorAll("[id^='dmermaid-']").forEach((el) => el.remove());
 }
 
 async function renderMermaid(code: string): Promise<string> {
-  const id = `mermaid-${++mermaidCounter}`;
-  const container = document.createElement("div");
-  container.style.position = "absolute";
-  container.style.left = "-9999px";
-  container.style.top = "-9999px";
-  document.body.appendChild(container);
-  try {
-    const { svg } = await mermaid.render(id, code, container);
-    return svg;
-  } finally {
-    container.remove();
-    cleanupMermaidErrors();
-  }
+  let resolve: (svg: string) => void;
+  let reject: (err: unknown) => void;
+  const result = new Promise<string>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  mermaidQueue = mermaidQueue.then(async () => {
+    const id = `mermaid-${++mermaidCounter}`;
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.left = "-9999px";
+    container.style.top = "-9999px";
+    document.body.appendChild(container);
+    try {
+      const { svg } = await mermaid.render(id, code, container);
+      resolve!(svg);
+    } catch (err) {
+      reject!(err);
+    } finally {
+      container.remove();
+      cleanupMermaidErrors();
+    }
+  });
+
+  return result;
 }
 
 function MermaidBlock({ code }: { code: string }) {
