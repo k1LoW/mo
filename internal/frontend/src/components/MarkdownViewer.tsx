@@ -292,11 +292,8 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
   }
 
   return (
-    <div>
-      <div className="flex justify-end mb-2 -mr-4">
-        <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
-      </div>
-      <article className="markdown-body">
+    <div className="flex items-start gap-2">
+      <article className="markdown-body min-w-0 flex-1">
         {isRawView ? (
           <RawView content={content} />
         ) : (
@@ -305,6 +302,9 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
           </Markdown>
         )}
       </article>
+      <div className="shrink-0 flex flex-col gap-2 -mr-4">
+        <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
+      </div>
     </div>
   );
 }
