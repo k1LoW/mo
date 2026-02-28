@@ -43,10 +43,12 @@ All internal API endpoints are under `/_/api/` and SSE under `/_/events`. The `/
 
 - Located in `internal/frontend/`, uses **pnpm** as the package manager.
 - React 19, TypeScript, Tailwind CSS v4.
-- Markdown rendering: `react-markdown` + `remark-gfm` + `rehype-raw` + `@shikijs/rehype` (syntax highlighting) + `mermaid` (diagram rendering).
+- Markdown rendering: `react-markdown` + `remark-gfm` + `rehype-raw` + `rehype-slug` (heading IDs) + `@shikijs/rehype` (syntax highlighting) + `mermaid` (diagram rendering).
 - SPA routing via `window.location.pathname` (no router library).
-- Key components: `App.tsx` (routing/state), `Sidebar.tsx` (file list), `MarkdownViewer.tsx` (rendering), `ThemeToggle.tsx` (dark/light mode), `GroupDropdown.tsx` (group switcher).
-- Custom hooks: `useSSE.ts` (SSE subscription with auto-reconnect), `useApi.ts` (typed API fetch wrappers).
+- Key components: `App.tsx` (routing/state), `Sidebar.tsx` (file list, resizable), `MarkdownViewer.tsx` (rendering + raw view toggle), `TocPanel.tsx` (table of contents, resizable), `ThemeToggle.tsx` (dark/light mode), `GroupDropdown.tsx` (group switcher).
+- Custom hooks: `useSSE.ts` (SSE subscription with auto-reconnect), `useApi.ts` (typed API fetch wrappers), `useActiveHeading.ts` (scroll-based active heading tracking via IntersectionObserver).
+- Theme: GitHub-style light/dark via CSS custom properties (`--color-gh-*`) in `styles/app.css`, toggled by `data-theme` attribute on `<html>`. UI components use Tailwind classes like `bg-gh-bg-sidebar`, `text-gh-text-secondary`, etc.
+- Toggle button pattern: `RawToggle.tsx` and `TocToggle.tsx` follow the same style (`bg-transparent border border-gh-border rounded-md p-1.5 text-gh-text-secondary`). New toolbar buttons should match this pattern.
 
 ## Key Patterns
 
@@ -54,3 +56,5 @@ All internal API endpoints are under `/_/api/` and SSE under `/_/events`. The `/
 - **File IDs**: Files are assigned sequential integer IDs on the server side. The frontend references files by ID, not path (paths are never exposed to the client).
 - **Tab groups**: Files are organized into named groups (default: "default"). Group name maps to the URL path.
 - **Live-reload via SSE**: fsnotify watches files; `file-changed` events trigger frontend to re-fetch content by file ID.
+- **Resizable panels**: Both `Sidebar.tsx` (left) and `TocPanel.tsx` (right) use the same drag-to-resize pattern with localStorage persistence. Left sidebar uses `e.clientX`, right panel uses `window.innerWidth - e.clientX`.
+- **Toolbar buttons in content area**: The toolbar column (ToC + Raw toggles) lives inside `MarkdownViewer.tsx`, positioned with `shrink-0 flex flex-col gap-2 -mr-4 -mt-4` to align with the header.
