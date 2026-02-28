@@ -6,6 +6,7 @@ import { rehypeGithubAlerts } from "rehype-github-alerts";
 import { codeToHtml } from "shiki";
 import mermaid from "mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
+import { RawToggle } from "./RawToggle";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
@@ -148,9 +149,43 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   );
 }
 
+function RawView({ content }: { content: string }) {
+  const [html, setHtml] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    codeToHtml(content, { lang: "markdown", theme: "github-dark" })
+      .then((result) => {
+        if (!cancelled) setHtml(result);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          codeToHtml(content, { lang: "text", theme: "github-dark" })
+            .then((result) => {
+              if (!cancelled) setHtml(result);
+            })
+            .catch(() => {});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [content]);
+
+  if (html) {
+    return <div className="[&_pre]:!rounded-none" dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+  return (
+    <pre>
+      <code>{content}</code>
+    </pre>
+  );
+}
+
 export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewerProps) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isRawView, setIsRawView] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,10 +292,19 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
   }
 
   return (
-    <article className="markdown-body">
-      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeGithubAlerts]} components={components}>
-        {content}
-      </Markdown>
-    </article>
+    <div>
+      <div className="flex justify-end mb-2 -mr-4">
+        <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
+      </div>
+      <article className="markdown-body">
+        {isRawView ? (
+          <RawView content={content} />
+        ) : (
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeGithubAlerts]} components={components}>
+            {content}
+          </Markdown>
+        )}
+      </article>
+    </div>
   );
 }
