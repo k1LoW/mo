@@ -3,7 +3,10 @@ import { Sidebar } from "./components/Sidebar";
 import { MarkdownViewer } from "./components/MarkdownViewer";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { GroupDropdown } from "./components/GroupDropdown";
+import { TocPanel } from "./components/TocPanel";
+import type { TocHeading } from "./components/TocPanel";
 import { useSSE } from "./hooks/useSSE";
+import { useActiveHeading } from "./hooks/useActiveHeading";
 import type { Group } from "./hooks/useApi";
 import { fetchGroups } from "./hooks/useApi";
 import { allFileIds, parseGroupFromPath } from "./utils/groups";
@@ -13,8 +16,11 @@ export function App() {
   const [activeGroup, setActiveGroup] = useState<string>("default");
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tocOpen, setTocOpen] = useState(false);
+  const [headings, setHeadings] = useState<TocHeading[]>([]);
   const [contentRevision, setContentRevision] = useState(0);
   const knownFileIds = useRef<Set<number>>(new Set());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -111,6 +117,16 @@ export function App() {
     setActiveFileId(fileId);
   };
 
+  const activeHeadingId = useActiveHeading(
+    headings.map((h) => h.id),
+    scrollContainerRef.current,
+  );
+
+  const handleHeadingClick = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   return (
     <div className="flex flex-col h-full font-sans text-gh-text bg-gh-bg">
       <header className="h-12 shrink-0 flex items-center gap-3 px-4 bg-gh-header-bg text-gh-header-text border-b border-gh-header-border">
@@ -146,12 +162,15 @@ export function App() {
           onFileSelect={setActiveFileId}
         />}
         <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-8 bg-gh-bg">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-8 bg-gh-bg">
             {activeFileId != null ? (
               <MarkdownViewer
                 fileId={activeFileId}
                 revision={contentRevision}
                 onFileOpened={handleFileOpened}
+                onHeadingsChange={setHeadings}
+                isTocOpen={tocOpen}
+                onTocToggle={() => setTocOpen((v) => !v)}
               />
             ) : (
               <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">
@@ -160,6 +179,13 @@ export function App() {
             )}
           </div>
         </main>
+        {tocOpen && (
+          <TocPanel
+            headings={headings}
+            activeHeadingId={activeHeadingId}
+            onHeadingClick={handleHeadingClick}
+          />
+        )}
       </div>
     </div>
   );

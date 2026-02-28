@@ -1,13 +1,16 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import rehypeSlug from "rehype-slug";
 import { rehypeGithubAlerts } from "rehype-github-alerts";
 import { codeToHtml } from "shiki";
 import mermaid from "mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
 import { RawToggle } from "./RawToggle";
+import { TocToggle } from "./TocToggle";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
+import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
 
@@ -15,6 +18,20 @@ interface MarkdownViewerProps {
   fileId: number;
   revision: number;
   onFileOpened: (fileId: number) => void;
+  onHeadingsChange: (headings: TocHeading[]) => void;
+  isTocOpen: boolean;
+  onTocToggle: () => void;
+}
+
+function extractText(node: React.ReactNode): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (node && typeof node === "object" && "props" in node) {
+    const el = node as React.ReactElement<{ children?: React.ReactNode }>;
+    return extractText(el.props.children);
+  }
+  return "";
 }
 
 let mermaidInitialized = false;
@@ -182,10 +199,11 @@ function RawView({ content }: { content: string }) {
   );
 }
 
-export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewerProps) {
+export function MarkdownViewer({ fileId, revision, onFileOpened, onHeadingsChange, isTocOpen, onTocToggle }: MarkdownViewerProps) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [isRawView, setIsRawView] = useState(false);
+  const headingsRef = useRef<TocHeading[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,8 +241,30 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
     [fileId, onFileOpened],
   );
 
+  // Reset heading collector before each render
+  headingsRef.current = [];
+
+  const createHeading = useCallback(
+    (level: number) =>
+      ({ id, children, ...props }: React.JSX.IntrinsicElements["h1"]) => {
+        const text = extractText(children);
+        if (id) {
+          headingsRef.current.push({ id: String(id), text, level });
+        }
+        const Tag = `h${level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+        return <Tag id={id} {...props}>{children}</Tag>;
+      },
+    [],
+  );
+
   const components: Components = useMemo(
     () => ({
+      h1: createHeading(1),
+      h2: createHeading(2),
+      h3: createHeading(3),
+      h4: createHeading(4),
+      h5: createHeading(5),
+      h6: createHeading(6),
       pre: ({ children }) => <>{children}</>,
       code: ({ className, children, ...props }) => {
         const language = extractLanguage(className);
@@ -284,8 +324,27 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
         }
       },
     }),
-    [fileId, handleLinkClick],
+    [fileId, handleLinkClick, createHeading],
   );
+
+  const renderedContent = useMemo(() => {
+    if (isRawView) {
+      return <RawView content={content} />;
+    }
+    return (
+      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeGithubAlerts, rehypeSlug]} components={components}>
+        {content}
+      </Markdown>
+    );
+  }, [content, isRawView, components]);
+
+  useEffect(() => {
+    if (isRawView) {
+      onHeadingsChange([]);
+    } else {
+      onHeadingsChange([...headingsRef.current]);
+    }
+  }, [content, isRawView, onHeadingsChange, renderedContent]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">Loading...</div>;
@@ -294,15 +353,10 @@ export function MarkdownViewer({ fileId, revision, onFileOpened }: MarkdownViewe
   return (
     <div className="flex items-start gap-2">
       <article className="markdown-body min-w-0 flex-1">
-        {isRawView ? (
-          <RawView content={content} />
-        ) : (
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeGithubAlerts]} components={components}>
-            {content}
-          </Markdown>
-        )}
+        {renderedContent}
       </article>
-      <div className="shrink-0 flex flex-col gap-2 -mr-4">
+      <div className="shrink-0 flex flex-col gap-2 -mr-4 -mt-4">
+        <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />
         <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
       </div>
     </div>
