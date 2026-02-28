@@ -24,6 +24,8 @@ import (
 var (
 	target string
 	port   int
+	open   bool
+	noOpen bool
 )
 
 var rootCmd = &cobra.Command{
@@ -86,6 +88,9 @@ func Execute() {
 func init() {
 	rootCmd.Flags().StringVarP(&target, "target", "t", "default", "Tab group name")
 	rootCmd.Flags().IntVarP(&port, "port", "p", 6275, "Server port")
+	rootCmd.Flags().BoolVar(&open, "open", false, "Always open browser (even when adding to existing group)")
+	rootCmd.Flags().BoolVar(&noOpen, "no-open", false, "Do not open browser automatically")
+	rootCmd.MarkFlagsMutuallyExclusive("open", "no-open")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -166,7 +171,7 @@ func tryAddToExisting(addr string, files []string) bool {
 
 	slog.Info("added files to existing server", "count", len(files), "addr", addr)
 
-	if isNewGroup {
+	if !noOpen && (isNewGroup || open) {
 		url := fmt.Sprintf("http://%s/%s", addr, target)
 		if err := browser.OpenURL(url); err != nil {
 			slog.Warn("could not open browser", "error", err)
@@ -223,12 +228,14 @@ func startServer(ctx context.Context, addr string, files []string) error {
 		}
 	}()
 
-	url := fmt.Sprintf("http://%s", addr)
-	if target != "default" {
-		url = fmt.Sprintf("%s/%s", url, target)
-	}
-	if err := browser.OpenURL(url); err != nil {
-		slog.Warn("could not open browser", "error", err)
+	if !noOpen {
+		url := fmt.Sprintf("http://%s", addr)
+		if target != "default" {
+			url = fmt.Sprintf("%s/%s", url, target)
+		}
+		if err := browser.OpenURL(url); err != nil {
+			slog.Warn("could not open browser", "error", err)
+		}
 	}
 
 	<-ctx.Done()
