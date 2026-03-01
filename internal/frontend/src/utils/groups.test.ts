@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { allFileIds, parseGroupFromPath } from "../utils/groups";
+import { allFileIds, parseGroupFromPath } from "./groups";
 import type { Group } from "../hooks/useApi";
 
 describe("allFileIds", () => {

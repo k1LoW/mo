@@ -14,10 +14,12 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/__tests__/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}"],
+    environment: "jsdom",
+    setupFiles: ["src/test-setup.ts"],
     coverage: {
       provider: "v8",
-      include: ["src/utils/**", "src/hooks/**"],
+      include: ["src/utils/**", "src/hooks/**", "src/components/**"],
       reporter: ["text", "lcov"],
       reportsDirectory: "coverage",
     },

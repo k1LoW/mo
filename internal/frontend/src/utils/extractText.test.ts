@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createElement } from "react";
-import { extractText } from "../utils/extractText";
+import { extractText } from "./extractText";
 
 describe("extractText", () => {
   it("returns string as-is", () => {

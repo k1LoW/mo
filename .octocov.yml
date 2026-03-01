@@ -9,10 +9,12 @@ codeToTestRatio:
     - 'internal/frontend/src/**/*.ts'
     - 'internal/frontend/src/**/*.tsx'
     - '!internal/frontend/src/**/*.test.ts'
+    - '!internal/frontend/src/**/*.test.tsx'
     - '!internal/frontend/node_modules/**'
   test:
     - '**/*_test.go'
     - 'internal/frontend/src/**/*.test.ts'
+    - 'internal/frontend/src/**/*.test.tsx'
 testExecutionTime:
   if: true
 diff:
