@@ -123,6 +123,43 @@ function MermaidBlock({ code }: { code: string }) {
   );
 }
 
+function CodeBlockCopyButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+    } catch {
+      // clipboard API may fail in insecure contexts
+    }
+  };
+
+  return (
+    <button
+      className={`absolute right-2 top-2 flex items-center justify-center rounded-md p-1 cursor-pointer transition-all duration-150 border border-[#484f58] hover:border-[#8b949e] ${copied ? "opacity-100 text-[#8b949e] bg-[#2d333b]" : "opacity-0 group-hover:opacity-100 text-[#8b949e] bg-[#2d333b]"}`}
+      onClick={handleCopy}
+      title="Copy code"
+    >
+      {copied ? (
+        <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+        </svg>
+      ) : (
+        <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25ZM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [html, setHtml] = useState("");
 
@@ -148,12 +185,20 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   }, [code, language]);
 
   if (html) {
-    return <div dangerouslySetInnerHTML={{ __html: html }} />;
+    return (
+      <div className="relative group">
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+        <CodeBlockCopyButton code={code} />
+      </div>
+    );
   }
   return (
-    <pre>
-      <code>{code}</code>
-    </pre>
+    <div className="relative group">
+      <pre>
+        <code>{code}</code>
+      </pre>
+      <CodeBlockCopyButton code={code} />
+    </div>
   );
 }
 
