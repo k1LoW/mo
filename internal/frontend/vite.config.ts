@@ -14,10 +14,10 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/__tests__/**/*.test.ts"],
+    include: ["src/__tests__/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",
-      include: ["src/utils/**"],
+      include: ["src/utils/**", "src/hooks/**"],
       reporter: ["text", "lcov"],
       reportsDirectory: "coverage",
     },

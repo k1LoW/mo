@@ -11,6 +11,7 @@ import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
+import { extractText } from "../utils/extractText";
 import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
@@ -22,17 +23,6 @@ interface MarkdownViewerProps {
   onHeadingsChange: (headings: TocHeading[]) => void;
   isTocOpen: boolean;
   onTocToggle: () => void;
-}
-
-function extractText(node: React.ReactNode): string {
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(extractText).join("");
-  if (node && typeof node === "object" && "props" in node) {
-    const el = node as React.ReactElement<{ children?: React.ReactNode }>;
-    return extractText(el.props.children);
-  }
-  return "";
 }
 
 let mermaidInitialized = false;
