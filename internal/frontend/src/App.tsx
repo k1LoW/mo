@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { MarkdownViewer } from "./components/MarkdownViewer";
 import { ThemeToggle } from "./components/ThemeToggle";
@@ -113,12 +113,14 @@ export function App() {
     window.history.pushState(null, "", url);
   };
 
-  const handleFileOpened = (fileId: number) => {
+  const handleFileOpened = useCallback((fileId: number) => {
     setActiveFileId(fileId);
-  };
+  }, []);
+
+  const headingIds = useMemo(() => headings.map((h) => h.id), [headings]);
 
   const activeHeadingId = useActiveHeading(
-    headings.map((h) => h.id),
+    headingIds,
     scrollContainerRef.current,
   );
 

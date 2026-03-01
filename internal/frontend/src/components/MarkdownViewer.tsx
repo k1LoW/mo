@@ -338,11 +338,13 @@ export function MarkdownViewer({ fileId, revision, onFileOpened, onHeadingsChang
     );
   }, [content, isRawView, components]);
 
+  const prevHeadingsKey = useRef("");
   useEffect(() => {
-    if (isRawView) {
-      onHeadingsChange([]);
-    } else {
-      onHeadingsChange([...headingsRef.current]);
+    const newHeadings = isRawView ? [] : [...headingsRef.current];
+    const key = newHeadings.map((h) => `${h.id}:${h.level}`).join(",");
+    if (key !== prevHeadingsKey.current) {
+      prevHeadingsKey.current = key;
+      onHeadingsChange(newHeadings);
     }
   }, [content, isRawView, onHeadingsChange, renderedContent]);
 
