@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
+import { resolveLink, resolveImageSrc, extractLanguage } from "./resolve";
 
 describe("resolveLink", () => {
   it("returns external for undefined href", () => {

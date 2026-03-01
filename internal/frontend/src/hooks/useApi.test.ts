@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchGroups, fetchFileContent, openRelativeFile } from "../hooks/useApi";
+import { fetchGroups, fetchFileContent, openRelativeFile } from "./useApi";
 
 beforeEach(() => {
   vi.restoreAllMocks();
