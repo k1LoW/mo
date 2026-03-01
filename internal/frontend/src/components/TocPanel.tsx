@@ -28,11 +28,11 @@ function getInitialWidth(): number {
 
 const INDENT: Record<number, string> = {
   1: "pl-3",
-  2: "pl-3",
-  3: "pl-6",
-  4: "pl-9",
-  5: "pl-12",
-  6: "pl-15",
+  2: "pl-6",
+  3: "pl-9",
+  4: "pl-12",
+  5: "pl-15",
+  6: "pl-18",
 };
 
 export function TocPanel({ headings, activeHeadingId, onHeadingClick }: TocPanelProps) {
