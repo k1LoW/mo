@@ -20,6 +20,9 @@ build: generate
 dev: generate
 	go run . $(ARGS)
 
+screenshot: build
+	cd internal/frontend && pnpm run screenshots
+
 lint:
 	golangci-lint run ./...
 	go vet -vettool=`which gostyle` -gostyle.config=$(PWD)/.gostyle.yml ./...
@@ -33,4 +36,4 @@ prerelease_for_tagpr: depsdev generate
 	gocredits -w .
 	git add CHANGELOG.md CREDITS go.mod go.sum
 
-.PHONY: default ci generate test build dev lint depsdev prerelease_for_tagpr
+.PHONY: default ci generate test build dev screenshot lint depsdev prerelease_for_tagpr

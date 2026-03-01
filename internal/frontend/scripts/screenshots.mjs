@@ -49,10 +49,6 @@ async function waitForRendering(page) {
 }
 
 async function main() {
-  // Build the Go binary
-  console.log("Building mo...");
-  execSync("make build", { cwd: ROOT, stdio: "inherit" });
-
   // Start server with an initial file
   console.log("Starting server on port", PORT);
   const firstFile = resolve(TESTDATA, "basic.md");
