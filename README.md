@@ -1,5 +1,7 @@
 <p align="center">
+<br><br><br>
 <img src="https://github.com/k1LoW/mo/raw/main/images/logo.svg" width="120" alt="mo">
+<br><br><br>
 </p>
 
 # mo
