@@ -9,6 +9,7 @@ import mermaid from "mermaid";
 import { fetchFileContent, openRelativeFile } from "../hooks/useApi";
 import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
+import { CopyButton } from "./CopyButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
@@ -360,6 +361,7 @@ export function MarkdownViewer({ fileId, revision, onFileOpened, onHeadingsChang
       <div className="shrink-0 flex flex-col gap-2 -mr-4 -mt-4">
         <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />
         <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
+        <CopyButton content={content} />
       </div>
     </div>
   );
