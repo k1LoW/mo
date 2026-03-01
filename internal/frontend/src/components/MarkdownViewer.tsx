@@ -117,7 +117,8 @@ export function MermaidBlock({ code }: { code: string }) {
     return (
       <div className="relative group">
         <div dangerouslySetInnerHTML={{ __html: svg }} />
-        <CodeBlockCopyButton code={code} />
+        <MermaidImageCopyButton svg={svg} />
+        <CodeBlockCopyButton code={code} themed />
       </div>
     );
   }
@@ -131,7 +132,117 @@ export function MermaidBlock({ code }: { code: string }) {
   );
 }
 
-function CodeBlockCopyButton({ code }: { code: string }) {
+function MermaidImageCopyButton({ svg }: { svg: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const handleCopy = async () => {
+    try {
+      const blob = await svgToPngBlob(svg);
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      setCopied(true);
+    } catch {
+      // clipboard API may fail in insecure contexts
+    }
+  };
+
+  return (
+    <button
+      className={`absolute right-10 top-2 flex items-center justify-center rounded-md p-1 cursor-pointer transition-all duration-150 border ${themedButtonStyle} ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+      onClick={handleCopy}
+      title="Copy image"
+    >
+      {copied ? (
+        <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+        </svg>
+      ) : (
+        <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M16 13.25A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75ZM1.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25Z" />
+          <path d="M0.5 12.75 4.5 5.5 7.5 9 9.5 6.5 15.5 12.75" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function svgToPngBlob(svgString: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgString, "image/svg+xml");
+    const svgEl = doc.documentElement;
+
+    // Ensure xmlns is present for standalone SVG rendering
+    if (!svgEl.getAttribute("xmlns")) {
+      svgEl.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    }
+
+    // Extract dimensions from the SVG element
+    const widthAttr = svgEl.getAttribute("width");
+    const heightAttr = svgEl.getAttribute("height");
+    const viewBox = svgEl.getAttribute("viewBox");
+
+    let width = 0;
+    let height = 0;
+
+    if (widthAttr && heightAttr) {
+      width = parseFloat(widthAttr);
+      height = parseFloat(heightAttr);
+    } else if (viewBox) {
+      const parts = viewBox.split(/[\s,]+/);
+      width = parseFloat(parts[2]);
+      height = parseFloat(parts[3]);
+    }
+
+    if (!width || !height) {
+      reject(new Error("Cannot determine SVG dimensions"));
+      return;
+    }
+
+    // Scale up for high-DPI displays
+    const scale = 4;
+    const serializer = new XMLSerializer();
+    const svgData = serializer.serializeToString(svgEl);
+    const dataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Failed to get canvas context"));
+        return;
+      }
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to create PNG blob"));
+        }
+      }, "image/png");
+    };
+    img.onerror = () => {
+      reject(new Error("Failed to load SVG image"));
+    };
+    img.src = dataUrl;
+  });
+}
+
+const darkButtonStyle = "border-[#484f58] hover:border-[#8b949e] text-[#8b949e] bg-[#2d333b]";
+const themedButtonStyle = "border-gh-border hover:border-gh-text-secondary text-gh-text-secondary bg-gh-bg-secondary";
+
+function CodeBlockCopyButton({ code, themed = false }: { code: string; themed?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -149,9 +260,11 @@ function CodeBlockCopyButton({ code }: { code: string }) {
     }
   };
 
+  const colorStyle = themed ? themedButtonStyle : darkButtonStyle;
+
   return (
     <button
-      className={`absolute right-2 top-2 flex items-center justify-center rounded-md p-1 cursor-pointer transition-all duration-150 border border-[#484f58] hover:border-[#8b949e] ${copied ? "opacity-100 text-[#8b949e] bg-[#2d333b]" : "opacity-0 group-hover:opacity-100 text-[#8b949e] bg-[#2d333b]"}`}
+      className={`absolute right-2 top-2 flex items-center justify-center rounded-md p-1 cursor-pointer transition-all duration-150 border ${colorStyle} ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
       onClick={handleCopy}
       title="Copy code"
     >
