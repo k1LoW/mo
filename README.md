@@ -1,3 +1,7 @@
+<p align="center">
+<img src="https://github.com/k1LoW/mo/raw/main/images/logo.svg" width="120" alt="mo">
+</p>
+
 # mo
 
 `mo` is a **M**arkdown viewer that **o**pens `.md` files in a browser.
