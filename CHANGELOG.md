@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.5.1](https://github.com/k1LoW/mo/compare/v0.5.0...v0.5.1) - 2026-03-01
+### Fix bug 🐛
+- fix: resolve render loop caused by unstable references in ToC integration by @k1LoW in https://github.com/k1LoW/mo/pull/26
+
 ## [v0.5.0](https://github.com/k1LoW/mo/compare/v0.4.1...v0.5.0) - 2026-02-28
 ### New Features 🎉
 - feat: add raw markdown view toggle by @k1LoW in https://github.com/k1LoW/mo/pull/22
