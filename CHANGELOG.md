@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.7.0](https://github.com/k1LoW/mo/compare/v0.6.0...v0.7.0) - 2026-03-01
+### New Features 🎉
+- feat: add copy button to code blocks by @k1LoW in https://github.com/k1LoW/mo/pull/32
+### Other Changes
+- test: improve frontend testing with colocation and component tests by @k1LoW in https://github.com/k1LoW/mo/pull/33
+
 ## [v0.6.0](https://github.com/k1LoW/mo/compare/v0.5.2...v0.6.0) - 2026-03-01
 ### New Features 🎉
 - feat: add copy-to-clipboard button with format selection by @k1LoW in https://github.com/k1LoW/mo/pull/29
