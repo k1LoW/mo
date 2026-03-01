@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { createElement } from "react";
 import { extractText } from "../utils/extractText";
 
 describe("extractText", () => {
@@ -42,33 +43,29 @@ describe("extractText", () => {
     expect(extractText(false)).toBe("");
   });
 
-  it("extracts text from ReactElement-like object", () => {
-    const node = { props: { children: "inner text" } };
+  it("extracts text from ReactElement", () => {
+    const node = createElement("span", null, "inner text");
     expect(extractText(node)).toBe("inner text");
   });
 
-  it("extracts text from nested ReactElement-like objects", () => {
-    const node = {
-      props: {
-        children: {
-          props: { children: "deeply nested" },
-        },
-      },
-    };
+  it("extracts text from nested ReactElements", () => {
+    const node = createElement("span", null, createElement("strong", null, "deeply nested"));
     expect(extractText(node)).toBe("deeply nested");
   });
 
-  it("extracts text from ReactElement with array children", () => {
-    const node = {
-      props: {
-        children: ["prefix ", { props: { children: "bold" } }, " suffix"],
-      },
-    };
+  it("extracts text from ReactElement with mixed children", () => {
+    const node = createElement(
+      "span",
+      null,
+      "prefix ",
+      createElement("strong", null, "bold"),
+      " suffix",
+    );
     expect(extractText(node)).toBe("prefix bold suffix");
   });
 
-  it("handles ReactElement with undefined children", () => {
-    const node = { props: {} };
+  it("handles ReactElement with no children", () => {
+    const node = createElement("br");
     expect(extractText(node)).toBe("");
   });
 });
