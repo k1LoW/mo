@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.6.0](https://github.com/k1LoW/mo/compare/v0.5.2...v0.6.0) - 2026-03-01
+### New Features 🎉
+- feat: add copy-to-clipboard button with format selection by @k1LoW in https://github.com/k1LoW/mo/pull/29
+### Other Changes
+- fix: differentiate ToC indentation for each heading level by @k1LoW in https://github.com/k1LoW/mo/pull/30
+
 ## [v0.5.2](https://github.com/k1LoW/mo/compare/v0.5.1...v0.5.2) - 2026-03-01
 
 ## [v0.5.1](https://github.com/k1LoW/mo/compare/v0.5.0...v0.5.1) - 2026-03-01
