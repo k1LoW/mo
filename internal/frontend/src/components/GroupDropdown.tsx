@@ -61,7 +61,11 @@ export function GroupDropdown({
       </button>
       {open && (
         <div className="absolute left-0 top-full mt-1 min-w-40 bg-gh-bg-sidebar border border-gh-border rounded-md shadow-lg z-10 py-1 max-h-60 overflow-y-auto">
-          {groups.map((g) => (
+          {[...groups].sort((a, b) => {
+            if (a.name === "default") return 1;
+            if (b.name === "default") return -1;
+            return a.name.localeCompare(b.name);
+          }).map((g) => (
             <button
               key={g.name}
               className={`flex items-center gap-2 w-full px-3 py-1.5 border-none cursor-pointer text-left text-xs transition-colors duration-150 ${
