@@ -10,28 +10,40 @@ export function useSSE(callbacks: SSECallbacks) {
   callbacksRef.current = callbacks;
 
   useEffect(() => {
-    const es = new EventSource("/_/events");
+    let disposed = false;
+    let es: EventSource | null = null;
 
-    es.addEventListener("update", () => {
-      callbacksRef.current.onUpdate();
-    });
+    function connect() {
+      if (disposed) return;
 
-    es.addEventListener("file-changed", (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        callbacksRef.current.onFileChanged?.(data.id);
-      } catch {
-        // ignore malformed data
-      }
-    });
+      es = new EventSource("/_/events");
 
-    es.onerror = () => {
-      es.close();
-      setTimeout(() => {
+      es.addEventListener("update", () => {
         callbacksRef.current.onUpdate();
-      }, 2000);
-    };
+      });
 
-    return () => es.close();
+      es.addEventListener("file-changed", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          callbacksRef.current.onFileChanged?.(data.id);
+        } catch {
+          // ignore malformed data
+        }
+      });
+
+      es.onerror = () => {
+        es?.close();
+        if (!disposed) {
+          setTimeout(connect, 2000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      disposed = true;
+      es?.close();
+    };
   }, []);
 }

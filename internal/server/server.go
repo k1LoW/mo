@@ -16,6 +16,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/k1LoW/donegroup"
 	"github.com/k1LoW/mo/internal/static"
+	"github.com/k1LoW/mo/version"
 )
 
 type FileEntry struct {
@@ -40,6 +41,7 @@ type State struct {
 	nextID      int
 	subscribers map[chan sseEvent]struct{}
 	watcher     *fsnotify.Watcher
+	restartCh   chan string
 }
 
 func NewState(ctx context.Context) *State {
@@ -53,6 +55,7 @@ func NewState(ctx context.Context) *State {
 		nextID:      1,
 		subscribers: make(map[chan sseEvent]struct{}),
 		watcher:     w,
+		restartCh:   make(chan string, 1),
 	}
 
 	if w != nil {
@@ -225,6 +228,46 @@ func (s *State) CloseAllSubscribers() {
 	}
 }
 
+// RestartCh returns a channel that receives the restore file path when a restart is requested.
+func (s *State) RestartCh() <-chan string {
+	return s.restartCh
+}
+
+// RestoreData represents the state to be persisted across restarts.
+type RestoreData struct {
+	Groups map[string][]string `json:"groups"`
+}
+
+// ExportState writes the current groups and file paths to a temporary file and returns the path.
+func (s *State) ExportState() (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	data := RestoreData{
+		Groups: make(map[string][]string, len(s.groups)),
+	}
+	for name, g := range s.groups {
+		paths := make([]string, 0, len(g.Files))
+		for _, f := range g.Files {
+			paths = append(paths, f.Path)
+		}
+		data.Groups[name] = paths
+	}
+
+	f, err := os.CreateTemp("", "mo-restore-*.json")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer f.Close()
+
+	if err := json.NewEncoder(f).Encode(data); err != nil {
+		os.Remove(f.Name()) //nolint:gosec // Path is from our own CreateTemp, not user-supplied
+		return "", fmt.Errorf("failed to write restore data: %w", err)
+	}
+
+	return f.Name(), nil
+}
+
 func (s *State) watchLoop() {
 	for {
 		select {
@@ -297,6 +340,8 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("GET /_/api/files/{id}/content", handleFileContent(state))
 	mux.HandleFunc("GET /_/api/files/{id}/raw/{path...}", handleFileRaw(state))
 	mux.HandleFunc("POST /_/api/files/open", handleOpenFile(state))
+	mux.HandleFunc("POST /_/api/restart", handleRestart(state))
+	mux.HandleFunc("GET /_/api/version", handleVersion())
 	mux.HandleFunc("GET /_/events", handleSSE(state))
 	mux.HandleFunc("GET /", handleSPA())
 
@@ -451,6 +496,33 @@ func handleOpenFile(state *State) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(newEntry); err != nil {
 			slog.Error("failed to encode response", "error", err)
+		}
+	}
+}
+
+func handleRestart(state *State) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		restoreFile, err := state.ExportState()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+
+		// Send restart signal after response is written
+		state.restartCh <- restoreFile
+	}
+}
+
+func handleVersion() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]string{
+			"version":  version.Version,
+			"revision": version.Revision,
+		}); err != nil {
+			slog.Error("failed to encode version response", "error", err)
 		}
 	}
 }

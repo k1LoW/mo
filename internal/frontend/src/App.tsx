@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { MarkdownViewer } from "./components/MarkdownViewer";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { GroupDropdown } from "./components/GroupDropdown";
+import { RestartButton } from "./components/RestartButton";
 import { TocPanel } from "./components/TocPanel";
 import type { TocHeading } from "./components/TocPanel";
 import { useSSE } from "./hooks/useSSE";
@@ -212,6 +213,7 @@ export function App() {
           />
         )}
       </div>
+      <RestartButton />
     </div>
   );
 }

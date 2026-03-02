@@ -9,8 +9,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -22,10 +24,11 @@ import (
 )
 
 var (
-	target string
-	port   int
-	open   bool
-	noOpen bool
+	target  string
+	port    int
+	open    bool
+	noOpen  bool
+	restore string
 )
 
 var rootCmd = &cobra.Command{
@@ -91,21 +94,46 @@ func init() {
 	rootCmd.Flags().BoolVar(&open, "open", false, "Always open browser (even when adding to existing group)")
 	rootCmd.Flags().BoolVar(&noOpen, "no-open", false, "Do not open browser automatically")
 	rootCmd.MarkFlagsMutuallyExclusive("open", "no-open")
+	rootCmd.Flags().StringVar(&restore, "restore", "", "Restore state from file (internal use)")
+	rootCmd.Flags().MarkHidden("restore") //nolint:errcheck
 }
 
 func run(cmd *cobra.Command, args []string) error {
+	addr := fmt.Sprintf("localhost:%d", port)
+
+	if restore != "" {
+		filesByGroup, err := loadRestoreData(restore)
+		if err != nil {
+			return fmt.Errorf("failed to restore state: %w", err)
+		}
+		return startServer(cmd.Context(), addr, filesByGroup)
+	}
+
 	files, err := resolveFiles(args)
 	if err != nil {
 		return err
 	}
 
-	addr := fmt.Sprintf("localhost:%d", port)
-
 	if len(files) > 0 && tryAddToExisting(addr, files) {
 		return nil
 	}
 
-	return startServer(cmd.Context(), addr, files)
+	filesByGroup := map[string][]string{target: files}
+	return startServer(cmd.Context(), addr, filesByGroup)
+}
+
+func loadRestoreData(path string) (map[string][]string, error) {
+	data, err := os.ReadFile(path) //nolint:gosec
+	if err != nil {
+		return nil, err
+	}
+	os.Remove(path)
+
+	var rd server.RestoreData
+	if err := json.Unmarshal(data, &rd); err != nil {
+		return nil, err
+	}
+	return rd.Groups, nil
 }
 
 func resolveFiles(args []string) ([]string, error) {
@@ -183,22 +211,30 @@ func tryAddToExisting(addr string, files []string) bool {
 	return true
 }
 
-func startServer(ctx context.Context, addr string, files []string) error {
+func startServer(ctx context.Context, addr string, filesByGroup map[string][]string) error {
 	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	ctx, cancel := donegroup.WithCancel(sigCtx)
-	defer func() {
+	cleanedUp := false
+	cleanup := func() {
+		if cleanedUp {
+			return
+		}
+		cleanedUp = true
 		cancel()
 		if err := donegroup.WaitWithTimeout(ctx, 5*time.Second); err != nil {
 			slog.Error("shutdown error", "error", err)
 		}
-	}()
+	}
+	defer cleanup()
 
 	state := server.NewState(ctx)
 
-	for _, f := range files {
-		state.AddFile(f, target)
+	for group, files := range filesByGroup {
+		for _, f := range files {
+			state.AddFile(f, group)
+		}
 	}
 
 	handler := server.NewHandler(state)
@@ -240,8 +276,39 @@ func startServer(ctx context.Context, addr string, files []string) error {
 		}
 	}
 
-	<-ctx.Done()
-	slog.Info("shutting down")
+	select {
+	case <-ctx.Done():
+		slog.Info("shutting down")
+	case restoreFile := <-state.RestartCh():
+		slog.Info("restarting")
+		// Cleanup releases the port (CloseAllSubscribers + srv.Shutdown)
+		// before we spawn the new process.
+		cleanup()
+		return spawnNewProcess(addr, restoreFile)
+	}
 
+	return nil
+}
+
+func spawnNewProcess(addr string, restoreFile string) error {
+	binPath, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		return fmt.Errorf("cannot find binary: %w", err)
+	}
+
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("cannot parse addr: %w", err)
+	}
+	portNum, _ := strconv.Atoi(portStr)
+
+	cmd := exec.Command(binPath, "--port", strconv.Itoa(portNum), "--no-open", "--restore", restoreFile) //nolint:gosec
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start new process: %w", err)
+	}
+
+	slog.Info("new process started", "pid", cmd.Process.Pid) //nolint:gosec // PID is from our own child process
 	return nil
 }

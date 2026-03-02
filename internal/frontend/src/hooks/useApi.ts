@@ -14,6 +14,11 @@ export interface FileContent {
   baseDir: string;
 }
 
+export interface VersionInfo {
+  version: string;
+  revision: string;
+}
+
 export async function fetchGroups(): Promise<Group[]> {
   const res = await fetch("/_/api/groups");
   if (!res.ok) throw new Error("Failed to fetch groups");
@@ -42,4 +47,15 @@ export async function openRelativeFile(
 export async function removeFile(id: number): Promise<void> {
   const res = await fetch(`/_/api/files/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to remove file");
+}
+
+export async function restartServer(): Promise<void> {
+  const res = await fetch("/_/api/restart", { method: "POST" });
+  if (!res.ok) throw new Error("Failed to restart server");
+}
+
+export async function fetchVersion(): Promise<VersionInfo> {
+  const res = await fetch("/_/api/version");
+  if (!res.ok) throw new Error("Failed to fetch version");
+  return res.json();
 }
