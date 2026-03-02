@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.10.1](https://github.com/k1LoW/mo/compare/v0.10.0...v0.10.1) - 2026-03-02
+### Other Changes
+- feat: update tree view toggle icon to file-tree style by @k1LoW in https://github.com/k1LoW/mo/pull/45
+
 ## [v0.10.0](https://github.com/k1LoW/mo/compare/v0.9.0...v0.10.0) - 2026-03-02
 ### New Features 🎉
 - feat: add drag-and-drop file reordering in sidebar by @k1LoW in https://github.com/k1LoW/mo/pull/41
