@@ -17,6 +17,16 @@ describe("stripMdxSyntax", () => {
     expect(stripMdxSyntax(input)).toBe(input);
   });
 
+  it("removes import/export without space before brace", () => {
+    const input = 'import{foo} from "bar";\nexport{meta};\n\n# Hello';
+    expect(stripMdxSyntax(input)).toBe("\n# Hello");
+  });
+
+  it("removes import with star", () => {
+    const input = 'import* as React from "react";\n\n# Hello';
+    expect(stripMdxSyntax(input)).toBe("\n# Hello");
+  });
+
   it("does not match words containing import/export", () => {
     const input = "This is an important note.\nWe exported the data.";
     expect(stripMdxSyntax(input)).toBe(input);

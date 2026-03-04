@@ -10,7 +10,7 @@ function countUnclosed(line: string): number {
 
 export function stripMdxSyntax(content: string): string {
   // Short-circuit: skip processing if no MDX-like patterns exist
-  if (!/^(import|export)\s/m.test(content) && !/<[A-Z]/.test(content)) {
+  if (!/^(import|export)[\s{*]/m.test(content) && !/<[A-Z]/.test(content)) {
     return content;
   }
 
@@ -50,7 +50,7 @@ export function stripMdxSyntax(content: string): string {
     }
 
     // Remove import/export lines (must start at beginning of line)
-    if (/^import\s/.test(line) || /^export\s/.test(line)) {
+    if (/^import[\s{*]/.test(line) || /^export[\s{*]/.test(line)) {
       strippingDepth = countUnclosed(line);
       continue;
     }

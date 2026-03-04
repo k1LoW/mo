@@ -237,6 +237,7 @@ export function App() {
             {activeFileId != null ? (
               <MarkdownViewer
                 fileId={activeFileId}
+                fileName={groups.find((g) => g.name === activeGroup)?.files.find((f) => f.id === activeFileId)?.name ?? ""}
                 revision={contentRevision}
                 onFileOpened={handleFileOpened}
                 onHeadingsChange={setHeadings}
