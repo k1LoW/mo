@@ -13,6 +13,7 @@ import { CopyButton } from "./CopyButton";
 import { RemoveButton } from "./RemoveButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import { extractText } from "../utils/extractText";
+import { parseFrontmatter } from "../utils/frontmatter";
 import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
@@ -325,6 +326,17 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   );
 }
 
+function FrontmatterBlock({ yaml }: { yaml: string }) {
+  return (
+    <details open className="mb-4">
+      <summary className="cursor-pointer select-none text-gh-text-secondary text-sm font-medium py-1">Metadata</summary>
+      <div className="mt-2">
+        <CodeBlock language="yaml" code={yaml} />
+      </div>
+    </details>
+  );
+}
+
 function RawView({ content }: { content: string }) {
   const [html, setHtml] = useState("");
 
@@ -486,14 +498,20 @@ export function MarkdownViewer({ fileId, revision, onFileOpened, onHeadingsChang
     [fileId, handleLinkClick, createHeading],
   );
 
+  const parsed = useMemo(() => isRawView ? null : parseFrontmatter(content), [content, isRawView]);
+
   const renderedContent = useMemo(() => {
     if (isRawView) {
       return <RawView content={content} />;
     }
+    const md = parsed ? parsed.content : content;
     return (
-      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeGithubAlerts, rehypeSlug]} components={components}>
-        {content}
-      </Markdown>
+      <>
+        {parsed && <FrontmatterBlock yaml={parsed.yaml} />}
+        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeGithubAlerts, rehypeSlug]} components={components}>
+          {md}
+        </Markdown>
+      </>
     );
   }, [content, isRawView, components]);
 
