@@ -498,7 +498,7 @@ export function MarkdownViewer({ fileId, revision, onFileOpened, onHeadingsChang
     [fileId, handleLinkClick, createHeading],
   );
 
-  const parsed = useMemo(() => parseFrontmatter(content), [content]);
+  const parsed = useMemo(() => isRawView ? null : parseFrontmatter(content), [content, isRawView]);
 
   const renderedContent = useMemo(() => {
     if (isRawView) {
