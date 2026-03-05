@@ -535,7 +535,9 @@ func (s *State) removeDirWatch(dir string) {
 		if count <= 0 {
 			delete(s.watchedDirs, dir)
 			if s.watcher != nil {
-				s.watcher.Remove(dir) //nolint:errcheck
+				if err := s.watcher.Remove(dir); err != nil {
+					slog.Warn("failed to remove directory watch", "dir", dir, "error", err)
+				}
 			}
 		} else {
 			s.watchedDirs[dir] = count
