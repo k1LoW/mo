@@ -516,7 +516,7 @@ func (s *State) walkDirsForPattern(gp *GlobPattern, fn func(string)) {
 		return
 	}
 
-	filepath.WalkDir(gp.BaseDir, func(path string, d os.DirEntry, err error) error { //nolint:errcheck
+	if err := filepath.WalkDir(gp.BaseDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -524,7 +524,9 @@ func (s *State) walkDirsForPattern(gp *GlobPattern, fn func(string)) {
 			fn(path)
 		}
 		return nil
-	})
+	}); err != nil {
+		slog.Warn("failed to walk directories for pattern", "pattern", gp.Pattern, "base", gp.BaseDir, "error", err)
+	}
 }
 
 func (s *State) removeDirWatch(dir string) {

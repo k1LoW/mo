@@ -26,6 +26,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	// probeTimeoutFast is used when a missing server is the normal case (e.g. first launch).
+	probeTimeoutFast = 500 * time.Millisecond
+	// probeTimeoutDefault is used when the server is expected to be running.
+	probeTimeoutDefault = 2 * time.Second
+)
+
 var (
 	target         string
 	port           int
@@ -279,7 +286,7 @@ func resolveFiles(args []string) ([]string, error) {
 }
 
 func tryAddToExisting(addr string, files []string, patterns []string) bool {
-	client, err := probeServer(addr)
+	client, err := probeServer(addr, probeTimeoutFast)
 	if err != nil {
 		return false
 	}
@@ -345,8 +352,12 @@ func postItems(client *http.Client, addr, endpoint, key, group string, items []s
 
 // probeServer checks that a mo server is running on addr by calling
 // GET /_/api/status and validating the response contains a version field.
-func probeServer(addr string) (*http.Client, error) {
-	client := &http.Client{Timeout: 2 * time.Second}
+func probeServer(addr string, timeout ...time.Duration) (*http.Client, error) {
+	t := probeTimeoutDefault
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
+	client := &http.Client{Timeout: t}
 	resp, err := client.Get(fmt.Sprintf("http://%s/_/api/status", addr))
 	if err != nil {
 		return nil, fmt.Errorf("no mo server found on %s", addr)
