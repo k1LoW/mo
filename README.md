@@ -18,12 +18,13 @@
 - <img src="images/icons/theme-light.svg" width="16" height="16" alt="dark theme"> Dark / <img src="images/icons/theme-dark.svg" width="16" height="16" alt="light theme"> light theme
 - <img src="images/icons/group.svg" width="16" height="16" alt="group"> File grouping
 - <img src="images/icons/toc.svg" width="16" height="16" alt="toc"> Table of contents panel
-- <img src="images/icons/view-flat.svg" width="16" height="16" alt="flat view"> Flat / <img src="images/icons/view-tree.svg" width="16" height="16" alt="tree view"> tree sidebar view with drag-and-drop reorder
+- <img src="images/icons/view-flat.svg" width="16" height="16" alt="flat view"> Flat / <img src="images/icons/view-tree.svg" width="16" height="16" alt="tree view"> tree sidebar view with drag-and-drop reorder and file search
 - YAML frontmatter display (collapsible metadata block)
 - MDX file support (renders as Markdown, strips `import`/`export`, escapes JSX tags)
 - <img src="images/icons/raw.svg" width="16" height="16" alt="raw"> Raw markdown view
 - <img src="images/icons/copy.svg" width="16" height="16" alt="copy"> Copy content (Markdown / Text / HTML)
 - <img src="images/icons/restart.svg" width="16" height="16" alt="restart"> Server restart with session preservation
+- Auto session backup and restore
 - Live-reload on save
 
 ## Install
@@ -144,6 +145,23 @@ $ mo --foreground README.md
 
 Click the <img src="images/icons/restart.svg" width="16" height="16" alt="restart"> restart button (bottom-right corner) or run `mo --restart` to restart the `mo` server process. The current session — all open files and groups — is preserved across the restart. This is useful when you have updated the `mo` binary and want to pick up the new version without re-opening your files.
 
+### Session backup and restore
+
+`mo` automatically saves session state (open files and watch patterns per group) when files are added or removed. If a `mo` server is stopped and you run `mo` with no arguments on the same port, the previous session is automatically restored.
+
+``` console
+$ mo README.md CHANGELOG.md       # Start with two files
+$ mo --shutdown                   # Shut down the server
+$ mo                              # Restores README.md and CHANGELOG.md
+```
+
+Use `--clear` to remove a saved session:
+
+``` console
+$ mo --clear                      # Clear saved session for the default port
+$ mo --clear -p 6276              # Clear saved session for a specific port
+```
+
 ### Flags
 
 | Flag | Short | Default | Description |
@@ -157,6 +175,7 @@ Click the <img src="images/icons/restart.svg" width="16" height="16" alt="restar
 | `--unwatch` | | | Remove a watched glob pattern (repeatable) |
 | `--shutdown` | | | Shut down the running mo server |
 | `--restart` | | | Restart the running mo server |
+| `--clear` | | | Clear saved session for the specified port |
 | `--foreground` | | | Run mo server in foreground |
 
 ## Build
