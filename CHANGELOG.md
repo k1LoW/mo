@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.13.1](https://github.com/k1LoW/mo/compare/v0.13.0...v0.13.1) - 2026-03-06
+### New Features 🎉
+- feat: add `--unwatch` flag to remove watched glob patterns by @k1LoW in https://github.com/k1LoW/mo/pull/65
+### Dependency Updates ⬆️
+- chore(deps): bump aquasecurity/trivy-action from 0.34.1 to 0.34.2 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/66
+- chore(deps): bump the dependencies group in /internal/frontend with 4 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/67
+
 ## [v0.13.0](https://github.com/k1LoW/mo/compare/v0.12.0...v0.13.0) - 2026-03-05
 ### New Features 🎉
 - feat: add `--watch` (`-w`) flag for glob pattern directory watching by @k1LoW in https://github.com/k1LoW/mo/pull/64
