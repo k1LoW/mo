@@ -283,7 +283,15 @@ func run(cmd *cobra.Command, args []string) error {
 		slog.Info("restoring session from backup", "port", port)
 		fmt.Fprintf(os.Stderr, "mo: restoring previous session for port %d\n", port)
 		for group, paths := range restoredFiles {
-			filesByGroup[group] = append(filesByGroup[group], paths...)
+			existing := make(map[string]struct{}, len(filesByGroup[group]))
+			for _, p := range filesByGroup[group] {
+				existing[p] = struct{}{}
+			}
+			for _, p := range paths {
+				if _, ok := existing[p]; !ok {
+					filesByGroup[group] = append(filesByGroup[group], p)
+				}
+			}
 		}
 		if patternsByGroup == nil && len(restoredPatterns) > 0 {
 			patternsByGroup = make(map[string][]string)
