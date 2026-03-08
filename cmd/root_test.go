@@ -206,6 +206,14 @@ func TestDisplayNames(t *testing.T) {
 		}
 	})
 
+	t.Run("identical paths do not loop forever", func(t *testing.T) {
+		paths := []string{"/a/b/README.md", "/a/b/README.md"}
+		got := displayNames(paths)
+		if len(got) != 2 {
+			t.Fatalf("got %d names, want 2", len(got))
+		}
+	})
+
 	t.Run("single entry stays short", func(t *testing.T) {
 		paths := []string{"/a/b/c/README.md"}
 		got := displayNames(paths)

@@ -831,7 +831,8 @@ type patternRequest struct {
 	Group   string `json:"group"`
 }
 
-type addPatternResponse struct {
+// AddPatternResponse is the JSON response for the add-pattern endpoint.
+type AddPatternResponse struct {
 	Matched int          `json:"matched"`
 	Files   []*FileEntry `json:"files,omitempty"`
 }
@@ -1088,7 +1089,7 @@ func handleAddPattern(state *State) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(addPatternResponse{Matched: len(entries), Files: entries}); err != nil {
+		if err := json.NewEncoder(w).Encode(AddPatternResponse{Matched: len(entries), Files: entries}); err != nil {
 			slog.Error("failed to encode response", "error", err)
 		}
 	}

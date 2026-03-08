@@ -464,11 +464,6 @@ func postFiles(client *http.Client, addr, group string, files []string) []deepli
 	return entries
 }
 
-type addPatternClientResponse struct {
-	Matched int                `json:"matched"`
-	Files   []*server.FileEntry `json:"files,omitempty"`
-}
-
 func postPatterns(client *http.Client, addr, group string, patterns []string) []deeplinkEntry {
 	var entries []deeplinkEntry
 	for _, pat := range patterns {
@@ -489,7 +484,7 @@ func postPatterns(client *http.Client, addr, group string, patterns []string) []
 			slog.Warn("failed to post pattern", "pattern", pat, "error", err)
 			continue
 		}
-		var patResp addPatternClientResponse
+		var patResp server.AddPatternResponse
 		if err := json.NewDecoder(resp.Body).Decode(&patResp); err != nil {
 			slog.Warn("failed to decode pattern response", "error", err)
 			resp.Body.Close()
@@ -540,13 +535,14 @@ func displayNames(paths []string) []string {
 				continue
 			}
 			for _, idx := range indices {
-				parent := filepath.Base(dirs[idx])
-				candidate := filepath.Join(parent, names[idx])
-				if candidate != names[idx] {
-					names[idx] = candidate
-					dirs[idx] = filepath.Dir(dirs[idx])
-					changed = true
+				// Stop expanding when we've reached the filesystem root
+				if dirs[idx] == filepath.Dir(dirs[idx]) {
+					continue
 				}
+				parent := filepath.Base(dirs[idx])
+				names[idx] = filepath.Join(parent, names[idx])
+				dirs[idx] = filepath.Dir(dirs[idx])
+				changed = true
 			}
 		}
 		if !changed {
@@ -932,30 +928,24 @@ func startBackground(addr string, filesByGroup map[string][]string, patternsByGr
 		slog.Warn("failed to release process", "error", err)
 	}
 
-	if err := waitForReady(addr, 10*time.Second); err != nil {
+	status, err := waitForReady(addr, 10*time.Second)
+	if err != nil {
 		return fmt.Errorf("%w (pid %d)", err, pid)
 	}
 
 	fmt.Fprintf(os.Stderr, "mo: serving at http://%s (pid %d)\n", addr, pid)
 
-	// Fetch status to display deeplinks for all files
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://%s/_/api/status", addr))
-	if err == nil {
-		var status statusResponse
-		if err := json.NewDecoder(resp.Body).Decode(&status); err == nil {
-			var deeplinks []deeplinkEntry
-			for _, g := range status.Groups {
-				for _, f := range g.Files {
-					deeplinks = append(deeplinks, deeplinkEntry{
-						URL:  buildDeeplink(addr, g.Name, f.ID),
-						Path: f.Path,
-					})
-				}
+	if status != nil {
+		var deeplinks []deeplinkEntry
+		for _, g := range status.Groups {
+			for _, f := range g.Files {
+				deeplinks = append(deeplinks, deeplinkEntry{
+					URL:  buildDeeplink(addr, g.Name, f.ID),
+					Path: f.Path,
+				})
 			}
-			printDeeplinks(deeplinks)
 		}
-		resp.Body.Close()
+		printDeeplinks(deeplinks)
 	}
 
 	openBrowser(addr)
@@ -976,20 +966,26 @@ func openBrowser(addr string) {
 	}
 }
 
-func waitForReady(addr string, timeout time.Duration) error {
+func waitForReady(addr string, timeout time.Duration) (*statusResponse, error) {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(fmt.Sprintf("http://%s/_/api/status", addr))
 		if err == nil {
-			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				return nil
+				var status statusResponse
+				if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+					resp.Body.Close()
+					return nil, nil //nolint:nilerr // decode failure is non-fatal; server is ready
+				}
+				resp.Body.Close()
+				return &status, nil
 			}
+			resp.Body.Close()
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	return fmt.Errorf("server did not become ready within %s (check log file for details)", timeout)
+	return nil, fmt.Errorf("server did not become ready within %s (check log file for details)", timeout)
 }

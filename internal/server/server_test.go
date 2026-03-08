@@ -823,7 +823,7 @@ func TestHandleAddPattern(t *testing.T) {
 		t.Fatalf("got status %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp addPatternResponse
+	var resp AddPatternResponse
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
