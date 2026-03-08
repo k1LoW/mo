@@ -19,14 +19,14 @@ function getInitialCollapsed(group: string): Set<string> {
 interface TreeViewProps {
   files: FileEntry[];
   activeGroup: string;
-  activeFileId: number | null;
-  menuOpenId: number | null;
+  activeFileId: string | null;
+  menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: number) => void;
-  onMenuToggle: (id: number) => void;
-  onOpenInNewTab: (id: number) => void;
-  onMoveToGroup: (id: number, group: string) => void;
-  onRemove: (id: number) => void;
+  onFileSelect: (id: string) => void;
+  onMenuToggle: (id: string) => void;
+  onOpenInNewTab: (id: string) => void;
+  onMoveToGroup: (id: string, group: string) => void;
+  onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -104,14 +104,14 @@ export function TreeView({
 interface TreeNodeItemProps {
   node: TreeNode;
   depth: number;
-  activeFileId: number | null;
-  menuOpenId: number | null;
+  activeFileId: string | null;
+  menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: number) => void;
-  onMenuToggle: (id: number) => void;
-  onOpenInNewTab: (id: number) => void;
-  onMoveToGroup: (id: number, group: string) => void;
-  onRemove: (id: number) => void;
+  onFileSelect: (id: string) => void;
+  onMenuToggle: (id: string) => void;
+  onOpenInNewTab: (id: string) => void;
+  onMoveToGroup: (id: string, group: string) => void;
+  onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
   collapsedPaths: Set<string>;
   onToggleCollapse: (path: string) => void;
@@ -207,14 +207,14 @@ interface FileNodeItemProps {
   file: FileEntry;
   name: string;
   depth: number;
-  activeFileId: number | null;
-  menuOpenId: number | null;
+  activeFileId: string | null;
+  menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: number) => void;
-  onMenuToggle: (id: number) => void;
-  onOpenInNewTab: (id: number) => void;
-  onMoveToGroup: (id: number, group: string) => void;
-  onRemove: (id: number) => void;
+  onFileSelect: (id: string) => void;
+  onMenuToggle: (id: string) => void;
+  onOpenInNewTab: (id: string) => void;
+  onMoveToGroup: (id: string, group: string) => void;
+  onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
 }
 

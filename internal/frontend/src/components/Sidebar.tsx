@@ -38,13 +38,13 @@ function getInitialWidth(): number {
 interface FileItemProps {
   file: FileEntry;
   isActive: boolean;
-  menuOpenId: number | null;
+  menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: number) => void;
-  onMenuToggle: (id: number) => void;
-  onOpenInNewTab: (id: number) => void;
-  onMoveToGroup: (id: number, group: string) => void;
-  onRemove: (id: number) => void;
+  onFileSelect: (id: string) => void;
+  onMenuToggle: (id: string) => void;
+  onOpenInNewTab: (id: string) => void;
+  onMoveToGroup: (id: string, group: string) => void;
+  onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -118,9 +118,9 @@ function SortableFileItem(props: FileItemProps) {
 interface SidebarProps {
   groups: Group[];
   activeGroup: string;
-  activeFileId: number | null;
-  onFileSelect: (id: number) => void;
-  onFilesReorder: (groupName: string, fileIds: number[]) => void;
+  activeFileId: string | null;
+  onFileSelect: (id: string) => void;
+  onFilesReorder: (groupName: string, fileIds: string[]) => void;
   viewMode: ViewMode;
   searchQuery: string | null;
   onSearchQueryChange: (query: string | null) => void;
@@ -157,7 +157,7 @@ export function Sidebar({
 
   const [width, setWidth] = useState(getInitialWidth);
   const resizeDragging = useRef(false);
-  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
@@ -225,7 +225,7 @@ export function Sidebar({
   }, [menuOpenId]);
 
   const handleOpenInNewTab = useCallback(
-    (id: number) => {
+    (id: string) => {
       setMenuOpenId(null);
       window.open(buildFileUrl(activeGroup, id), "_blank");
     },
@@ -243,7 +243,7 @@ export function Sidebar({
   }, [groups, activeGroup]);
 
   const handleMoveToGroup = useCallback(
-    async (id: number, group: string) => {
+    async (id: string, group: string) => {
       setMenuOpenId(null);
       try {
         await moveFile(id, group);
@@ -254,12 +254,12 @@ export function Sidebar({
     [],
   );
 
-  const handleRemove = useCallback((id: number) => {
+  const handleRemove = useCallback((id: string) => {
     setMenuOpenId(null);
     removeFile(id);
   }, []);
 
-  const handleMenuToggle = useCallback((id: number) => {
+  const handleMenuToggle = useCallback((id: string) => {
     setMenuOpenId((prev) => (prev === id ? null : id));
   }, []);
 

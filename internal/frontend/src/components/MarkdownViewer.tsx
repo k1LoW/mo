@@ -20,10 +20,10 @@ import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
 
 interface MarkdownViewerProps {
-  fileId: number;
+  fileId: string;
   fileName: string;
   revision: number;
-  onFileOpened: (fileId: number) => void;
+  onFileOpened: (fileId: string) => void;
   onHeadingsChange: (headings: TocHeading[]) => void;
   isTocOpen: boolean;
   onTocToggle: () => void;

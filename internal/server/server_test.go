@@ -25,7 +25,6 @@ func newTestState(t *testing.T) *State {
 	t.Cleanup(cancel)
 	s := &State{
 		groups:      make(map[string]*Group),
-		nextID:      1,
 		subscribers: make(map[chan sseEvent]struct{}),
 		restartCh:   make(chan string, 1),
 		shutdownCh:  make(chan struct{}, 1),
@@ -36,31 +35,35 @@ func newTestState(t *testing.T) *State {
 }
 
 func TestReorderFiles(t *testing.T) {
+	idA := FileID("/a.md")
+	idB := FileID("/b.md")
+	idC := FileID("/c.md")
+
 	t.Run("reorders files successfully", func(t *testing.T) {
 		s := newTestState(t)
 		s.groups[DefaultGroup] = &Group{
 			Name: DefaultGroup,
 			Files: []*FileEntry{
-				{ID: 1, Name: "a.md", Path: "/a.md"},
-				{ID: 2, Name: "b.md", Path: "/b.md"},
-				{ID: 3, Name: "c.md", Path: "/c.md"},
+				{ID: idA, Name: "a.md", Path: "/a.md"},
+				{ID: idB, Name: "b.md", Path: "/b.md"},
+				{ID: idC, Name: "c.md", Path: "/c.md"},
 			},
 		}
 
-		ok := s.ReorderFiles(DefaultGroup, []int{3, 1, 2})
+		ok := s.ReorderFiles(DefaultGroup, []string{idC, idA, idB})
 		if !ok {
 			t.Fatal("ReorderFiles returned false, want true")
 		}
 
 		files := s.groups[DefaultGroup].Files
-		if files[0].ID != 3 || files[1].ID != 1 || files[2].ID != 2 {
-			t.Errorf("got order [%d, %d, %d], want [3, 1, 2]", files[0].ID, files[1].ID, files[2].ID)
+		if files[0].ID != idC || files[1].ID != idA || files[2].ID != idB {
+			t.Errorf("got order [%s, %s, %s], want [%s, %s, %s]", files[0].ID, files[1].ID, files[2].ID, idC, idA, idB)
 		}
 	})
 
 	t.Run("returns false for unknown group", func(t *testing.T) {
 		s := newTestState(t)
-		ok := s.ReorderFiles("nonexistent", []int{1})
+		ok := s.ReorderFiles("nonexistent", []string{idA})
 		if ok {
 			t.Fatal("ReorderFiles returned true for unknown group")
 		}
@@ -71,12 +74,12 @@ func TestReorderFiles(t *testing.T) {
 		s.groups[DefaultGroup] = &Group{
 			Name: DefaultGroup,
 			Files: []*FileEntry{
-				{ID: 1, Name: "a.md", Path: "/a.md"},
-				{ID: 2, Name: "b.md", Path: "/b.md"},
+				{ID: idA, Name: "a.md", Path: "/a.md"},
+				{ID: idB, Name: "b.md", Path: "/b.md"},
 			},
 		}
 
-		ok := s.ReorderFiles(DefaultGroup, []int{1})
+		ok := s.ReorderFiles(DefaultGroup, []string{idA})
 		if ok {
 			t.Fatal("ReorderFiles returned true for mismatched count")
 		}
@@ -87,12 +90,12 @@ func TestReorderFiles(t *testing.T) {
 		s.groups[DefaultGroup] = &Group{
 			Name: DefaultGroup,
 			Files: []*FileEntry{
-				{ID: 1, Name: "a.md", Path: "/a.md"},
-				{ID: 2, Name: "b.md", Path: "/b.md"},
+				{ID: idA, Name: "a.md", Path: "/a.md"},
+				{ID: idB, Name: "b.md", Path: "/b.md"},
 			},
 		}
 
-		ok := s.ReorderFiles(DefaultGroup, []int{1, 99})
+		ok := s.ReorderFiles(DefaultGroup, []string{idA, "nonexist"})
 		if ok {
 			t.Fatal("ReorderFiles returned true for unknown file ID")
 		}
@@ -100,26 +103,30 @@ func TestReorderFiles(t *testing.T) {
 }
 
 func TestMoveFile(t *testing.T) {
+	idA := FileID("/a.md")
+	idB := FileID("/b.md")
+	idC := FileID("/c.md")
+
 	t.Run("moves file to existing group", func(t *testing.T) {
 		s := newTestState(t)
 		s.groups["src"] = &Group{
 			Name:  "src",
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}, {ID: 2, Name: "b.md", Path: "/b.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}, {ID: idB, Name: "b.md", Path: "/b.md"}},
 		}
 		s.groups["dst"] = &Group{
 			Name:  "dst",
-			Files: []*FileEntry{{ID: 3, Name: "c.md", Path: "/c.md"}},
+			Files: []*FileEntry{{ID: idC, Name: "c.md", Path: "/c.md"}},
 		}
 
-		if err := s.MoveFile(1, "dst"); err != nil {
+		if err := s.MoveFile(idA, "dst"); err != nil {
 			t.Fatalf("MoveFile returned error: %v", err)
 		}
 
-		if len(s.groups["src"].Files) != 1 || s.groups["src"].Files[0].ID != 2 {
-			t.Error("source group should have only file 2")
+		if len(s.groups["src"].Files) != 1 || s.groups["src"].Files[0].ID != idB {
+			t.Error("source group should have only file b")
 		}
-		if len(s.groups["dst"].Files) != 2 || s.groups["dst"].Files[1].ID != 1 {
-			t.Error("target group should have file 1 appended")
+		if len(s.groups["dst"].Files) != 2 || s.groups["dst"].Files[1].ID != idA {
+			t.Error("target group should have file a appended")
 		}
 	})
 
@@ -127,18 +134,18 @@ func TestMoveFile(t *testing.T) {
 		s := newTestState(t)
 		s.groups["src"] = &Group{
 			Name:  "src",
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}, {ID: 2, Name: "b.md", Path: "/b.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}, {ID: idB, Name: "b.md", Path: "/b.md"}},
 		}
 
-		if err := s.MoveFile(1, "newgroup"); err != nil {
+		if err := s.MoveFile(idA, "newgroup"); err != nil {
 			t.Fatalf("MoveFile returned error: %v", err)
 		}
 
 		if _, ok := s.groups["newgroup"]; !ok {
 			t.Fatal("target group should have been created")
 		}
-		if s.groups["newgroup"].Files[0].ID != 1 {
-			t.Error("target group should contain file 1")
+		if s.groups["newgroup"].Files[0].ID != idA {
+			t.Error("target group should contain file a")
 		}
 	})
 
@@ -146,14 +153,14 @@ func TestMoveFile(t *testing.T) {
 		s := newTestState(t)
 		s.groups["src"] = &Group{
 			Name:  "src",
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 		s.groups["dst"] = &Group{
 			Name:  "dst",
-			Files: []*FileEntry{{ID: 2, Name: "b.md", Path: "/b.md"}},
+			Files: []*FileEntry{{ID: idB, Name: "b.md", Path: "/b.md"}},
 		}
 
-		if err := s.MoveFile(1, "dst"); err != nil {
+		if err := s.MoveFile(idA, "dst"); err != nil {
 			t.Fatalf("MoveFile returned error: %v", err)
 		}
 
@@ -166,14 +173,14 @@ func TestMoveFile(t *testing.T) {
 		s := newTestState(t)
 		s.groups["src"] = &Group{
 			Name:  "src",
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 		s.groups["dst"] = &Group{
 			Name:  "dst",
-			Files: []*FileEntry{{ID: 2, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 
-		err := s.MoveFile(1, "dst")
+		err := s.MoveFile(idA, "dst")
 		if err == nil {
 			t.Fatal("MoveFile should return error for duplicate path")
 		}
@@ -183,10 +190,10 @@ func TestMoveFile(t *testing.T) {
 		s := newTestState(t)
 		s.groups["src"] = &Group{
 			Name:  "src",
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 
-		err := s.MoveFile(1, "src")
+		err := s.MoveFile(idA, "src")
 		if err == nil {
 			t.Fatal("MoveFile should return error for same group")
 		}
@@ -194,7 +201,7 @@ func TestMoveFile(t *testing.T) {
 
 	t.Run("returns error for unknown file", func(t *testing.T) {
 		s := newTestState(t)
-		err := s.MoveFile(999, "dst")
+		err := s.MoveFile("nonexist", "dst")
 		if err == nil {
 			t.Fatal("MoveFile should return error for unknown file")
 		}
@@ -202,15 +209,18 @@ func TestMoveFile(t *testing.T) {
 }
 
 func TestHandleMoveFile(t *testing.T) {
+	idA := FileID("/a.md")
+	idB := FileID("/b.md")
+
 	t.Run("moves file via HTTP", func(t *testing.T) {
 		s := newTestState(t)
 		s.groups["src"] = &Group{
 			Name:  "src",
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 		s.groups["dst"] = &Group{
 			Name:  "dst",
-			Files: []*FileEntry{{ID: 2, Name: "b.md", Path: "/b.md"}},
+			Files: []*FileEntry{{ID: idB, Name: "b.md", Path: "/b.md"}},
 		}
 
 		handler := NewHandler(s)
@@ -218,7 +228,7 @@ func TestHandleMoveFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest("PUT", "/_/api/files/1/group", bytes.NewReader(body))
+		req := httptest.NewRequest("PUT", fmt.Sprintf("/_/api/files/%s/group", idA), bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 
@@ -236,11 +246,11 @@ func TestHandleMoveFile(t *testing.T) {
 		s := newTestState(t)
 		s.groups["src"] = &Group{
 			Name:  "src",
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 		s.groups["dst"] = &Group{
 			Name:  "dst",
-			Files: []*FileEntry{{ID: 2, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 
 		handler := NewHandler(s)
@@ -248,7 +258,7 @@ func TestHandleMoveFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest("PUT", "/_/api/files/1/group", bytes.NewReader(body))
+		req := httptest.NewRequest("PUT", fmt.Sprintf("/_/api/files/%s/group", idA), bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 
@@ -296,11 +306,13 @@ func TestHandleShutdown(t *testing.T) {
 }
 
 func TestHandleRestart(t *testing.T) {
+	idA := FileID("/a.md")
+
 	t.Run("returns 202 and signals restartCh", func(t *testing.T) {
 		s := newTestState(t)
 		s.groups[DefaultGroup] = &Group{
 			Name:  DefaultGroup,
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 		handler := NewHandler(s)
 		req := httptest.NewRequest("POST", "/_/api/restart", nil)
@@ -329,7 +341,7 @@ func TestHandleRestart(t *testing.T) {
 		s := newTestState(t)
 		s.groups[DefaultGroup] = &Group{
 			Name:  DefaultGroup,
-			Files: []*FileEntry{{ID: 1, Name: "a.md", Path: "/a.md"}},
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
 		}
 		handler := NewHandler(s)
 
@@ -354,18 +366,21 @@ func TestHandleRestart(t *testing.T) {
 }
 
 func TestHandleReorderFiles(t *testing.T) {
+	idA := FileID("/a.md")
+	idB := FileID("/b.md")
+
 	t.Run("reorders files via HTTP", func(t *testing.T) {
 		s := newTestState(t)
 		s.groups["docs"] = &Group{
 			Name: "docs",
 			Files: []*FileEntry{
-				{ID: 1, Name: "a.md", Path: "/a.md"},
-				{ID: 2, Name: "b.md", Path: "/b.md"},
+				{ID: idA, Name: "a.md", Path: "/a.md"},
+				{ID: idB, Name: "b.md", Path: "/b.md"},
 			},
 		}
 
 		handler := NewHandler(s)
-		body, err := json.Marshal(reorderFilesRequest{Group: "docs", FileIDs: []int{2, 1}})
+		body, err := json.Marshal(reorderFilesRequest{Group: "docs", FileIDs: []string{idB, idA}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -380,8 +395,8 @@ func TestHandleReorderFiles(t *testing.T) {
 		}
 
 		files := s.groups["docs"].Files
-		if files[0].ID != 2 || files[1].ID != 1 {
-			t.Errorf("got order [%d, %d], want [2, 1]", files[0].ID, files[1].ID)
+		if files[0].ID != idB || files[1].ID != idA {
+			t.Errorf("got order [%s, %s], want [%s, %s]", files[0].ID, files[1].ID, idB, idA)
 		}
 	})
 
@@ -390,13 +405,13 @@ func TestHandleReorderFiles(t *testing.T) {
 		s.groups["api/docs"] = &Group{
 			Name: "api/docs",
 			Files: []*FileEntry{
-				{ID: 1, Name: "a.md", Path: "/a.md"},
-				{ID: 2, Name: "b.md", Path: "/b.md"},
+				{ID: idA, Name: "a.md", Path: "/a.md"},
+				{ID: idB, Name: "b.md", Path: "/b.md"},
 			},
 		}
 
 		handler := NewHandler(s)
-		body, err := json.Marshal(reorderFilesRequest{Group: "api/docs", FileIDs: []int{2, 1}})
+		body, err := json.Marshal(reorderFilesRequest{Group: "api/docs", FileIDs: []string{idB, idA}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -411,15 +426,15 @@ func TestHandleReorderFiles(t *testing.T) {
 		}
 
 		files := s.groups["api/docs"].Files
-		if files[0].ID != 2 || files[1].ID != 1 {
-			t.Errorf("got order [%d, %d], want [2, 1]", files[0].ID, files[1].ID)
+		if files[0].ID != idB || files[1].ID != idA {
+			t.Errorf("got order [%s, %s], want [%s, %s]", files[0].ID, files[1].ID, idB, idA)
 		}
 	})
 
 	t.Run("returns 400 for invalid group", func(t *testing.T) {
 		s := newTestState(t)
 		handler := NewHandler(s)
-		body, err := json.Marshal(reorderFilesRequest{Group: "nonexistent", FileIDs: []int{1}})
+		body, err := json.Marshal(reorderFilesRequest{Group: "nonexistent", FileIDs: []string{idA}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -996,5 +1011,22 @@ func TestEnableBackup_ReflectsLatestState(t *testing.T) {
 	paths := last.Groups[DefaultGroup]
 	if len(paths) != 2 {
 		t.Fatalf("got %d paths, want 2", len(paths))
+	}
+}
+
+func TestFileID(t *testing.T) {
+	id := FileID("/tmp/test.md")
+	if len(id) != 8 {
+		t.Fatalf("FileID should return 8-char string, got %q (len=%d)", id, len(id))
+	}
+
+	// Same path should always produce the same ID
+	if FileID("/tmp/test.md") != id {
+		t.Fatal("FileID should be deterministic")
+	}
+
+	// Different paths should produce different IDs
+	if FileID("/tmp/other.md") == id {
+		t.Fatal("FileID should differ for different paths")
 	}
 }

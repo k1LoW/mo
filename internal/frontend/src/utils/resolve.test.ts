@@ -3,118 +3,118 @@ import { resolveLink, resolveImageSrc, extractLanguage } from "./resolve";
 
 describe("resolveLink", () => {
   it("returns external for undefined href", () => {
-    expect(resolveLink(undefined, 1)).toEqual({ type: "external" });
+    expect(resolveLink(undefined, "a")).toEqual({ type: "external" });
   });
 
   it("returns external for http:// URLs", () => {
-    expect(resolveLink("http://example.com", 1)).toEqual({ type: "external" });
+    expect(resolveLink("http://example.com", "a")).toEqual({ type: "external" });
   });
 
   it("returns external for https:// URLs", () => {
-    expect(resolveLink("https://example.com/page", 1)).toEqual({ type: "external" });
+    expect(resolveLink("https://example.com/page", "a")).toEqual({ type: "external" });
   });
 
   it("returns hash for anchor-only links", () => {
-    expect(resolveLink("#section", 1)).toEqual({ type: "hash" });
+    expect(resolveLink("#section", "a")).toEqual({ type: "hash" });
   });
 
   it("returns markdown for .md links", () => {
-    expect(resolveLink("other.md", 5)).toEqual({
+    expect(resolveLink("other.md", "e")).toEqual({
       type: "markdown",
       hrefPath: "other.md",
     });
   });
 
   it("strips anchor from markdown links", () => {
-    expect(resolveLink("readme.md#title", 5)).toEqual({
+    expect(resolveLink("readme.md#title", "e")).toEqual({
       type: "markdown",
       hrefPath: "readme.md",
     });
   });
 
   it("returns markdown for nested path .md links", () => {
-    expect(resolveLink("docs/guide.md", 3)).toEqual({
+    expect(resolveLink("docs/guide.md", "c")).toEqual({
       type: "markdown",
       hrefPath: "docs/guide.md",
     });
   });
 
   it("returns markdown for .mdx links", () => {
-    expect(resolveLink("component.mdx", 5)).toEqual({
+    expect(resolveLink("component.mdx", "e")).toEqual({
       type: "markdown",
       hrefPath: "component.mdx",
     });
   });
 
   it("returns markdown for nested path .mdx links", () => {
-    expect(resolveLink("docs/intro.mdx", 3)).toEqual({
+    expect(resolveLink("docs/intro.mdx", "c")).toEqual({
       type: "markdown",
       hrefPath: "docs/intro.mdx",
     });
   });
 
   it("strips anchor from .mdx links", () => {
-    expect(resolveLink("page.mdx#section", 5)).toEqual({
+    expect(resolveLink("page.mdx#section", "e")).toEqual({
       type: "markdown",
       hrefPath: "page.mdx",
     });
   });
 
   it("returns file for links with non-md extensions", () => {
-    expect(resolveLink("image.png", 7)).toEqual({
+    expect(resolveLink("image.png", "g")).toEqual({
       type: "file",
-      rawUrl: "/_/api/files/7/raw/image.png",
+      rawUrl: "/_/api/files/g/raw/image.png",
     });
   });
 
   it("returns file and preserves anchor in rawUrl", () => {
-    expect(resolveLink("data.csv#sheet1", 2)).toEqual({
+    expect(resolveLink("data.csv#sheet1", "b")).toEqual({
       type: "file",
-      rawUrl: "/_/api/files/2/raw/data.csv#sheet1",
+      rawUrl: "/_/api/files/b/raw/data.csv#sheet1",
     });
   });
 
   it("returns file for nested paths with extensions", () => {
-    expect(resolveLink("assets/logo.svg", 4)).toEqual({
+    expect(resolveLink("assets/logo.svg", "d")).toEqual({
       type: "file",
-      rawUrl: "/_/api/files/4/raw/assets/logo.svg",
+      rawUrl: "/_/api/files/d/raw/assets/logo.svg",
     });
   });
 
   it("returns passthrough for extensionless paths", () => {
-    expect(resolveLink("somedir", 1)).toEqual({ type: "passthrough" });
+    expect(resolveLink("somedir", "a")).toEqual({ type: "passthrough" });
   });
 
   it("returns passthrough for directory-like paths", () => {
-    expect(resolveLink("path/to/dir", 1)).toEqual({ type: "passthrough" });
+    expect(resolveLink("path/to/dir", "a")).toEqual({ type: "passthrough" });
   });
 });
 
 describe("resolveImageSrc", () => {
   it("rewrites relative src to raw API URL", () => {
-    expect(resolveImageSrc("image.png", 3)).toBe("/_/api/files/3/raw/image.png");
+    expect(resolveImageSrc("image.png", "c")).toBe("/_/api/files/c/raw/image.png");
   });
 
   it("rewrites nested relative src", () => {
-    expect(resolveImageSrc("assets/photo.jpg", 5)).toBe(
-      "/_/api/files/5/raw/assets/photo.jpg",
+    expect(resolveImageSrc("assets/photo.jpg", "e")).toBe(
+      "/_/api/files/e/raw/assets/photo.jpg",
     );
   });
 
   it("passes through http:// URLs", () => {
-    expect(resolveImageSrc("http://example.com/img.png", 1)).toBe(
+    expect(resolveImageSrc("http://example.com/img.png", "a")).toBe(
       "http://example.com/img.png",
     );
   });
 
   it("passes through https:// URLs", () => {
-    expect(resolveImageSrc("https://example.com/img.png", 1)).toBe(
+    expect(resolveImageSrc("https://example.com/img.png", "a")).toBe(
       "https://example.com/img.png",
     );
   });
 
   it("returns undefined for undefined src", () => {
-    expect(resolveImageSrc(undefined, 1)).toBeUndefined();
+    expect(resolveImageSrc(undefined, "a")).toBeUndefined();
   });
 });
 

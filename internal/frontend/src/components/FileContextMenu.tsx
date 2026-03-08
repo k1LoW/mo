@@ -7,10 +7,10 @@ interface FileContextMenuProps {
   file: FileEntry;
   isOpen: boolean;
   otherGroups: Group[];
-  onToggle: (id: number) => void;
-  onOpenInNewTab: (id: number) => void;
-  onMoveToGroup: (id: number, group: string) => void;
-  onRemove: (id: number) => void;
+  onToggle: (id: string) => void;
+  onOpenInNewTab: (id: string) => void;
+  onMoveToGroup: (id: string, group: string) => void;
+  onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
 }
 

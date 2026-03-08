@@ -7,7 +7,7 @@ beforeEach(() => {
 
 describe("fetchGroups", () => {
   it("returns groups on success", async () => {
-    const data = [{ name: "default", files: [{ id: 1, name: "a.md", path: "/a.md" }] }];
+    const data = [{ name: "default", files: [{ id: "abc12345", name: "a.md", path: "/a.md" }] }];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(data),
@@ -36,9 +36,9 @@ describe("fetchFileContent", () => {
       json: () => Promise.resolve(data),
     }));
 
-    const result = await fetchFileContent(42);
+    const result = await fetchFileContent("abc12345");
     expect(result).toEqual(data);
-    expect(fetch).toHaveBeenCalledWith("/_/api/files/42/content");
+    expect(fetch).toHaveBeenCalledWith("/_/api/files/abc12345/content");
   });
 
   it("throws on error response", async () => {
@@ -47,24 +47,24 @@ describe("fetchFileContent", () => {
       status: 404,
     }));
 
-    await expect(fetchFileContent(99)).rejects.toThrow("Failed to fetch file content");
+    await expect(fetchFileContent("nonexist")).rejects.toThrow("Failed to fetch file content");
   });
 });
 
 describe("openRelativeFile", () => {
   it("sends POST with correct body", async () => {
-    const entry = { id: 5, name: "other.md", path: "/other.md" };
+    const entry = { id: "eee55555", name: "other.md", path: "/other.md" };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(entry),
     }));
 
-    const result = await openRelativeFile(3, "./other.md");
+    const result = await openRelativeFile("ccc33333", "./other.md");
     expect(result).toEqual(entry);
     expect(fetch).toHaveBeenCalledWith("/_/api/files/open", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileId: 3, path: "./other.md" }),
+      body: JSON.stringify({ fileId: "ccc33333", path: "./other.md" }),
     });
   });
 
@@ -74,7 +74,7 @@ describe("openRelativeFile", () => {
       status: 500,
     }));
 
-    await expect(openRelativeFile(1, "missing.md")).rejects.toThrow("Failed to open file");
+    await expect(openRelativeFile("aaa11111", "missing.md")).rejects.toThrow("Failed to open file");
   });
 });
 
@@ -84,11 +84,11 @@ describe("reorderFiles", () => {
       ok: true,
     }));
 
-    await reorderFiles("default", [3, 1, 2]);
+    await reorderFiles("default", ["ccc", "aaa", "bbb"]);
     expect(fetch).toHaveBeenCalledWith("/_/api/reorder", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ group: "default", fileIds: [3, 1, 2] }),
+      body: JSON.stringify({ group: "default", fileIds: ["ccc", "aaa", "bbb"] }),
     });
   });
 
@@ -97,11 +97,11 @@ describe("reorderFiles", () => {
       ok: true,
     }));
 
-    await reorderFiles("api/docs", [1, 2]);
+    await reorderFiles("api/docs", ["aaa", "bbb"]);
     expect(fetch).toHaveBeenCalledWith("/_/api/reorder", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ group: "api/docs", fileIds: [1, 2] }),
+      body: JSON.stringify({ group: "api/docs", fileIds: ["aaa", "bbb"] }),
     });
   });
 
@@ -111,7 +111,7 @@ describe("reorderFiles", () => {
       status: 400,
     }));
 
-    await expect(reorderFiles("default", [1])).rejects.toThrow("Failed to reorder files");
+    await expect(reorderFiles("default", ["aaa"])).rejects.toThrow("Failed to reorder files");
   });
 });
 
@@ -121,8 +121,8 @@ describe("moveFile", () => {
       ok: true,
     }));
 
-    await moveFile(5, "docs");
-    expect(fetch).toHaveBeenCalledWith("/_/api/files/5/group", {
+    await moveFile("eee55555", "docs");
+    expect(fetch).toHaveBeenCalledWith("/_/api/files/eee55555/group", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ group: "docs" }),
@@ -136,7 +136,7 @@ describe("moveFile", () => {
       text: () => Promise.resolve('file "a.md" already exists in group "docs"\n'),
     }));
 
-    await expect(moveFile(1, "docs")).rejects.toThrow('file "a.md" already exists in group "docs"');
+    await expect(moveFile("aaa11111", "docs")).rejects.toThrow('file "a.md" already exists in group "docs"');
   });
 
   it("throws default message when response body is empty", async () => {
@@ -146,6 +146,6 @@ describe("moveFile", () => {
       text: () => Promise.resolve(""),
     }));
 
-    await expect(moveFile(1, "docs")).rejects.toThrow("Failed to move file");
+    await expect(moveFile("aaa11111", "docs")).rejects.toThrow("Failed to move file");
   });
 });

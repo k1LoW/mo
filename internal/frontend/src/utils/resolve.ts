@@ -7,7 +7,7 @@ export type LinkResolution =
 
 export function resolveLink(
   href: string | undefined,
-  fileId: number,
+  fileId: string,
 ): LinkResolution {
   if (
     !href ||
@@ -32,7 +32,7 @@ export function resolveLink(
 
 export function resolveImageSrc(
   src: string | undefined,
-  fileId: number,
+  fileId: string,
 ): string | undefined {
   if (src && !src.startsWith("http://") && !src.startsWith("https://")) {
     return `/_/api/files/${fileId}/raw/${src}`;

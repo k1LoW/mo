@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 interface SSECallbacks {
   onUpdate: () => void;
-  onFileChanged?: (fileId: number) => void;
+  onFileChanged?: (fileId: string) => void;
 }
 
 export function useSSE(callbacks: SSECallbacks) {

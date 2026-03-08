@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -9,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,8 +24,15 @@ import (
 
 type FileEntry struct {
 	Name string `json:"name"`
-	ID   int    `json:"id"`
+	ID   string `json:"id"`
 	Path string `json:"path"`
+}
+
+// FileID generates a deterministic file ID from an absolute path.
+// The ID is the first 8 characters of the SHA-256 hex digest.
+func FileID(absPath string) string {
+	h := sha256.Sum256([]byte(absPath))
+	return hex.EncodeToString(h[:])[:8]
 }
 
 type Group struct {
@@ -58,7 +66,6 @@ func (gp *GlobPattern) IsRecursive() bool {
 type State struct {
 	mu          sync.RWMutex
 	groups      map[string]*Group
-	nextID      int
 	subscribers map[chan sseEvent]struct{}
 	watcher     *fsnotify.Watcher
 	restartCh   chan string
@@ -79,7 +86,6 @@ func NewState(ctx context.Context) *State {
 
 	s := &State{
 		groups:      make(map[string]*Group),
-		nextID:      1,
 		subscribers: make(map[chan sseEvent]struct{}),
 		watcher:     w,
 		restartCh:   make(chan string, 1),
@@ -115,10 +121,9 @@ func (s *State) AddFile(absPath, groupName string) *FileEntry {
 
 	entry := &FileEntry{
 		Name: filepath.Base(absPath),
-		ID:   s.nextID,
+		ID:   FileID(absPath),
 		Path: absPath,
 	}
-	s.nextID++
 	g.Files = append(g.Files, entry)
 
 	if s.watcher != nil {
@@ -144,7 +149,7 @@ func (s *State) Groups() []Group {
 	return result
 }
 
-func (s *State) FindFile(id int) *FileEntry {
+func (s *State) FindFile(id string) *FileEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -159,7 +164,7 @@ func (s *State) FindFile(id int) *FileEntry {
 }
 
 // FindGroupForFile returns the group name for a given file ID.
-func (s *State) FindGroupForFile(id int) string {
+func (s *State) FindGroupForFile(id string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -173,7 +178,7 @@ func (s *State) FindGroupForFile(id int) string {
 	return ""
 }
 
-func (s *State) ReorderFiles(groupName string, fileIDs []int) bool {
+func (s *State) ReorderFiles(groupName string, fileIDs []string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -186,7 +191,7 @@ func (s *State) ReorderFiles(groupName string, fileIDs []int) bool {
 		return false
 	}
 
-	idToFile := make(map[int]*FileEntry, len(g.Files))
+	idToFile := make(map[string]*FileEntry, len(g.Files))
 	for _, f := range g.Files {
 		idToFile[f.ID] = f
 	}
@@ -205,7 +210,7 @@ func (s *State) ReorderFiles(groupName string, fileIDs []int) bool {
 	return true
 }
 
-func (s *State) MoveFile(id int, targetGroup string) error {
+func (s *State) MoveFile(id string, targetGroup string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -265,7 +270,7 @@ func (s *State) MoveFile(id int, targetGroup string) error {
 	return nil
 }
 
-func (s *State) RemoveFile(id int) bool {
+func (s *State) RemoveFile(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -688,20 +693,20 @@ func (s *State) watchLoop() {
 	}
 }
 
-func (s *State) notifyFileChanged(ids []int) {
+func (s *State) notifyFileChanged(ids []string) {
 	for _, id := range ids {
 		s.sendEvent(sseEvent{
 			Name: eventFileChanged,
-			Data: fmt.Sprintf(`{"id":%d}`, id),
+			Data: fmt.Sprintf(`{"id":"%s"}`, id),
 		})
 	}
 }
 
-func (s *State) findIDsByPath(absPath string) []int {
+func (s *State) findIDsByPath(absPath string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var ids []int
+	var ids []string
 	for _, g := range s.groups {
 		for _, f := range g.Files {
 			if f.Path == absPath {
@@ -800,8 +805,8 @@ func (s *State) matchAndAddFile(path string, patterns []*GlobPattern) {
 }
 
 type reorderFilesRequest struct {
-	Group   string `json:"group"`
-	FileIDs []int  `json:"fileIds"`
+	Group   string   `json:"group"`
+	FileIDs []string `json:"fileIds"`
 }
 
 type moveFileRequest struct {
@@ -828,7 +833,7 @@ type fileContentResponse struct {
 }
 
 type openFileRequest struct {
-	FileID int    `json:"fileId"`
+	FileID string `json:"fileId"`
 	Path   string `json:"path"`
 }
 
@@ -890,9 +895,9 @@ func handleAddFile(state *State) http.HandlerFunc {
 
 func handleRemoveFile(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.Atoi(r.PathValue("id"))
-		if err != nil {
-			http.Error(w, "invalid file id", http.StatusBadRequest)
+		id := r.PathValue("id")
+		if id == "" {
+			http.Error(w, "missing file id", http.StatusBadRequest)
 			return
 		}
 		if !state.RemoveFile(id) {
@@ -905,9 +910,9 @@ func handleRemoveFile(state *State) http.HandlerFunc {
 
 func handleMoveFile(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.Atoi(r.PathValue("id"))
-		if err != nil {
-			http.Error(w, "invalid file id", http.StatusBadRequest)
+		id := r.PathValue("id")
+		if id == "" {
+			http.Error(w, "missing file id", http.StatusBadRequest)
 			return
 		}
 		var req moveFileRequest
@@ -960,9 +965,9 @@ func handleGroups(state *State) http.HandlerFunc {
 
 func handleFileContent(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.Atoi(r.PathValue("id"))
-		if err != nil {
-			http.Error(w, "invalid file id", http.StatusBadRequest)
+		id := r.PathValue("id")
+		if id == "" {
+			http.Error(w, "missing file id", http.StatusBadRequest)
 			return
 		}
 
@@ -991,9 +996,9 @@ func handleFileContent(state *State) http.HandlerFunc {
 
 func handleFileRaw(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.Atoi(r.PathValue("id"))
-		if err != nil {
-			http.Error(w, "invalid file id", http.StatusBadRequest)
+		id := r.PathValue("id")
+		if id == "" {
+			http.Error(w, "missing file id", http.StatusBadRequest)
 			return
 		}
 

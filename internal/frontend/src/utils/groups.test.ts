@@ -18,29 +18,29 @@ describe("allFileIds", () => {
       {
         name: "default",
         files: [
-          { id: 1, name: "a.md", path: "/a.md" },
-          { id: 2, name: "b.md", path: "/b.md" },
+          { id: "abc12345", name: "a.md", path: "/a.md" },
+          { id: "def67890", name: "b.md", path: "/b.md" },
         ],
       },
     ];
-    expect(allFileIds(groups)).toEqual(new Set([1, 2]));
+    expect(allFileIds(groups)).toEqual(new Set(["abc12345", "def67890"]));
   });
 
   it("collects IDs from multiple groups", () => {
     const groups: Group[] = [
       {
         name: "default",
-        files: [{ id: 1, name: "a.md", path: "/a.md" }],
+        files: [{ id: "abc12345", name: "a.md", path: "/a.md" }],
       },
       {
         name: "docs",
         files: [
-          { id: 2, name: "b.md", path: "/b.md" },
-          { id: 3, name: "c.md", path: "/c.md" },
+          { id: "def67890", name: "b.md", path: "/b.md" },
+          { id: "ghi11111", name: "c.md", path: "/c.md" },
         ],
       },
     ];
-    expect(allFileIds(groups)).toEqual(new Set([1, 2, 3]));
+    expect(allFileIds(groups)).toEqual(new Set(["abc12345", "def67890", "ghi11111"]));
   });
 
   it("handles groups with no files", () => {
@@ -48,10 +48,10 @@ describe("allFileIds", () => {
       { name: "empty", files: [] },
       {
         name: "notempty",
-        files: [{ id: 5, name: "e.md", path: "/e.md" }],
+        files: [{ id: "eee55555", name: "e.md", path: "/e.md" }],
       },
     ];
-    expect(allFileIds(groups)).toEqual(new Set([5]));
+    expect(allFileIds(groups)).toEqual(new Set(["eee55555"]));
   });
 });
 
@@ -89,11 +89,11 @@ describe("groupToPath", () => {
 
 describe("buildFileUrl", () => {
   it("builds URL for default group", () => {
-    expect(buildFileUrl("default", 1)).toBe("/?file=1");
+    expect(buildFileUrl("default", "abc12345")).toBe("/?file=abc12345");
   });
 
   it("builds URL for named group", () => {
-    expect(buildFileUrl("design", 5)).toBe("/design?file=5");
+    expect(buildFileUrl("design", "def67890")).toBe("/design?file=def67890");
   });
 });
 
@@ -103,11 +103,7 @@ describe("parseFileIdFromSearch", () => {
   });
 
   it("parses file id from search string", () => {
-    expect(parseFileIdFromSearch("?file=2")).toBe(2);
-  });
-
-  it("returns null for non-numeric value", () => {
-    expect(parseFileIdFromSearch("?file=abc")).toBeNull();
+    expect(parseFileIdFromSearch("?file=abc12345")).toBe("abc12345");
   });
 
   it("returns null when file param is missing", () => {
@@ -115,14 +111,10 @@ describe("parseFileIdFromSearch", () => {
   });
 
   it("handles search with multiple params", () => {
-    expect(parseFileIdFromSearch("?foo=bar&file=10&baz=1")).toBe(10);
+    expect(parseFileIdFromSearch("?foo=bar&file=def67890&baz=1")).toBe("def67890");
   });
 
-  it("returns null for zero", () => {
-    expect(parseFileIdFromSearch("?file=0")).toBeNull();
-  });
-
-  it("returns null for negative value", () => {
-    expect(parseFileIdFromSearch("?file=-3")).toBeNull();
+  it("returns null for empty value", () => {
+    expect(parseFileIdFromSearch("?file=")).toBeNull();
   });
 });

@@ -24,7 +24,7 @@ const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 export function App() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [activeGroup, setActiveGroup] = useState<string>("default");
-  const [activeFileId, setActiveFileId] = useState<number | null>(null);
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
   const [headings, setHeadings] = useState<TocHeading[]>([]);
@@ -37,8 +37,8 @@ export function App() {
     } catch { /* ignore */ }
     return {};
   });
-  const knownFileIds = useRef<Set<number>>(new Set());
-  const initialFileId = useRef<number | null>(
+  const knownFileIds = useRef<Set<string>>(new Set());
+  const initialFileId = useRef<string | null>(
     parseFileIdFromSearch(window.location.search),
   );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -48,7 +48,7 @@ export function App() {
       const data = await fetchGroups();
       const newIds = allFileIds(data);
       const wasEmpty = knownFileIds.current.size === 0;
-      const added: number[] = [];
+      const added: string[] = [];
       for (const id of newIds) {
         if (!knownFileIds.current.has(id)) {
           added.push(id);
@@ -67,7 +67,11 @@ export function App() {
               group.files.some((f) => f.id === id),
             );
             if (addedInGroup.length > 0) {
-              setActiveFileId(Math.max(...addedInGroup));
+              // Select the last file in the group's list (most recently added)
+              const lastAdded = group.files.filter((f) => addedInGroup.includes(f.id));
+              if (lastAdded.length > 0) {
+                setActiveFileId(lastAdded[lastAdded.length - 1].id);
+              }
             }
           }
           return currentGroup;
@@ -181,7 +185,7 @@ export function App() {
     window.history.pushState(null, "", groupToPath(name));
   };
 
-  const handleFileOpened = useCallback((fileId: number) => {
+  const handleFileOpened = useCallback((fileId: string) => {
     setActiveFileId(fileId);
   }, []);
 
@@ -192,7 +196,7 @@ export function App() {
   }, [activeFileId]);
 
   const handleFilesReorder = useCallback(
-    (groupName: string, fileIds: number[]) => {
+    (groupName: string, fileIds: string[]) => {
       // Optimistic update
       setGroups((prev) =>
         prev.map((g) => {
