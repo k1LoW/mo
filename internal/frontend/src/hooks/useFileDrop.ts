@@ -41,6 +41,7 @@ export function useFileDrop(activeGroup: string): { isDragging: boolean } {
 
   const handleDrop = useCallback(
     async (e: DragEvent) => {
+      if (!hasFiles(e)) return;
       e.preventDefault();
       dragCounter.current = 0;
       setIsDragging(false);

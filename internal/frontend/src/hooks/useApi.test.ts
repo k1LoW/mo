@@ -163,7 +163,11 @@ describe("uploadFile", () => {
   });
 
   it("throws on error response", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: () => Promise.resolve(""),
+    }));
 
     await expect(uploadFile("test.md", "# Hello", "default")).rejects.toThrow("Failed to upload file");
   });

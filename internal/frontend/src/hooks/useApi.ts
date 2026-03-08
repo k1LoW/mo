@@ -80,7 +80,10 @@ export async function uploadFile(name: string, content: string, group: string): 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, content, group }),
   });
-  if (!res.ok) throw new Error("Failed to upload file");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text.trim() || "Failed to upload file");
+  }
 }
 
 export async function restartServer(): Promise<void> {
