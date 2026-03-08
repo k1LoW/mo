@@ -8,13 +8,13 @@ const groups: Group[] = [
   {
     name: "default",
     files: [
-      { id: 1, name: "README.md", path: "/README.md" },
-      { id: 2, name: "GUIDE.md", path: "/GUIDE.md" },
+      { id: "aaa11111", name: "README.md", path: "/README.md" },
+      { id: "bbb22222", name: "GUIDE.md", path: "/GUIDE.md" },
     ],
   },
   {
     name: "docs",
-    files: [{ id: 3, name: "api.md", path: "/docs/api.md" }],
+    files: [{ id: "ccc33333", name: "api.md", path: "/docs/api.md" }],
   },
 ];
 
@@ -63,7 +63,7 @@ describe("Sidebar", () => {
       <Sidebar
         groups={groups}
         activeGroup="default"
-        activeFileId={1}
+        activeFileId={"aaa11111"}
         onFileSelect={() => {}}
         onFilesReorder={() => {}}
         viewMode="flat"
@@ -95,7 +95,7 @@ describe("Sidebar", () => {
     );
 
     await user.click(screen.getByText("GUIDE.md"));
-    expect(onFileSelect).toHaveBeenCalledWith(2);
+    expect(onFileSelect).toHaveBeenCalledWith("bbb22222");
   });
 
   it("shows file path as title attribute", () => {

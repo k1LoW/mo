@@ -6,17 +6,17 @@ import type { Group } from "../hooks/useApi";
 
 const defaultGroup: Group = {
   name: "default",
-  files: [{ id: 1, name: "a.md", path: "/a.md" }],
+  files: [{ id: "aaa11111", name: "a.md", path: "/a.md" }],
 };
 
 const docsGroup: Group = {
   name: "docs",
-  files: [{ id: 2, name: "b.md", path: "/b.md" }],
+  files: [{ id: "bbb22222", name: "b.md", path: "/b.md" }],
 };
 
 const designGroup: Group = {
   name: "design",
-  files: [{ id: 3, name: "c.md", path: "/c.md" }],
+  files: [{ id: "ccc33333", name: "c.md", path: "/c.md" }],
 };
 
 describe("GroupDropdown", () => {
