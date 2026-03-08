@@ -1058,9 +1058,13 @@ func startBackground(addr string, filesByGroup map[string][]string, patternsByGr
 	if status != nil {
 		for _, g := range status.Groups {
 			for _, f := range g.Files {
+				p := f.Path
+				if p == "" {
+					p = f.Name
+				}
 				deeplinks = append(deeplinks, deeplinkEntry{
 					URL:  buildDeeplink(addr, g.Name, f.ID),
-					Path: f.Path,
+					Path: p,
 				})
 			}
 		}
