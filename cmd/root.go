@@ -51,7 +51,7 @@ var (
 	unwatchPatterns []string
 	clearBackup      bool
 	jsonOutput       bool
-	skipBindConfirm  bool
+	dangerouslyAllowRemoteAccess bool
 )
 
 var rootCmd = &cobra.Command{
@@ -169,7 +169,7 @@ func init() {
 	rootCmd.Flags().StringArrayVar(&unwatchPatterns, "unwatch", nil, "Remove a watched glob pattern (repeatable)")
 	rootCmd.Flags().BoolVar(&clearBackup, "clear", false, "Clear saved session for the specified port")
 	rootCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output structured data as JSON to stdout")
-	rootCmd.Flags().BoolVar(&skipBindConfirm, "skip-bind-address-confirmation", false, "Skip the security confirmation prompt for non-loopback bind addresses")
+	rootCmd.Flags().BoolVar(&dangerouslyAllowRemoteAccess, "dangerously-allow-remote-access", false, "Allow remote access without authentication. Recommended only for trusted networks.")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -314,7 +314,10 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Prompt only when actually starting a new server (not adding to existing one).
-	if !isLoopbackBind(bind) && !skipBindConfirm {
+	if !isLoopbackBind(bind) {
+		slog.Warn("binding to non-loopback address", "bind", bind, "dangerously-allow-remote-access", dangerouslyAllowRemoteAccess)
+	}
+	if !isLoopbackBind(bind) && !dangerouslyAllowRemoteAccess {
 		o := termenv.NewOutput(os.Stderr)
 		c := func(s string) termenv.Style { return o.String(s).Foreground(o.Color("208")) }
 		fmt.Fprintln(os.Stderr, c("SECURITY WARNING:").Bold(),
