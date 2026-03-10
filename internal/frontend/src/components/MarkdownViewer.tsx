@@ -67,7 +67,7 @@ async function renderMermaid(code: string, width?: number): Promise<string> {
     container.style.position = "absolute";
     container.style.left = "-9999px";
     container.style.top = "-9999px";
-    container.style.width = `${width ?? 800}px`;
+    container.style.width = `${width && width > 0 ? width : 800}px`;
     document.body.appendChild(container);
     try {
       const { svg } = await mermaid.render(id, code, container);
