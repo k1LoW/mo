@@ -177,7 +177,9 @@ func run(cmd *cobra.Command, args []string) error {
 
 	addr := fmt.Sprintf("%s:%d", bind, port)
 
-	if bind != "localhost" && bind != "127.0.0.1" && bind != "::1" {
+	// Skip the prompt when --restore is set (i.e. restart via spawnNewProcess),
+	// because the user already confirmed when they first started the server.
+	if bind != "localhost" && bind != "127.0.0.1" && bind != "::1" && restore == "" {
 		o := termenv.NewOutput(os.Stderr)
 		c := func(s string) termenv.Style { return o.String(s).Foreground(o.Color("208")) }
 		fmt.Fprintln(os.Stderr, c("SECURITY WARNING:").Bold(),
