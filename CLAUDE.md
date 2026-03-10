@@ -38,6 +38,15 @@ go test ./internal/server/ -run TestHandleFiles
 # Run linters (golangci-lint + gostyle)
 make lint
 
+# Format code (frontend)
+make fmt
+
+# Check formatting without modifying
+make fmt-check
+
+# Take screenshots for README (requires Chrome)
+make screenshot
+
 # CI target (install dev deps + generate + test)
 make ci
 
@@ -57,6 +66,7 @@ cd internal/frontend && pnpm run dev
 - `--shutdown` — Shut down the running mo server
 - `--restart` — Restart the running mo server
 - `--foreground` — Run mo server in foreground (do not background)
+- `--dangerously-allow-remote-access` — Allow remote access without authentication (trusted networks only)
 
 ## Architecture
 
@@ -76,11 +86,11 @@ cd internal/frontend && pnpm run dev
 - Package manager: **pnpm** (version specified in `internal/frontend/package.json` `packageManager` field)
 - Markdown rendering: `react-markdown` + `remark-gfm` + `rehype-raw` + `rehype-slug` (heading IDs) + `@shikijs/rehype` (syntax highlighting) + `mermaid` (diagram rendering)
 - SPA routing via `window.location.pathname` (no router library)
-- Key components: `App.tsx` (routing/state), `Sidebar.tsx` (file list with flat/tree view, resizable, drag-and-drop reorder), `TreeView.tsx` (tree view with collapsible directories), `MarkdownViewer.tsx` (rendering + raw view toggle), `TocPanel.tsx` (table of contents, resizable), `GroupDropdown.tsx` (group switcher), `FileContextMenu.tsx` (shared kebab menu for file operations)
+- Key components: `App.tsx` (routing/state), `Sidebar.tsx` (file list with flat/tree view, resizable, drag-and-drop reorder), `TreeView.tsx` (tree view with collapsible directories), `MarkdownViewer.tsx` (rendering + raw view toggle), `TocPanel.tsx` (table of contents, resizable), `GroupDropdown.tsx` (group switcher), `FileContextMenu.tsx` (shared kebab menu for file operations), `WidthToggle.tsx` (wide/narrow content width toggle)
 - Custom hooks: `useSSE.ts` (SSE subscription with auto-reconnect), `useApi.ts` (typed API fetch wrappers), `useActiveHeading.ts` (scroll-based active heading tracking via IntersectionObserver)
 - Utilities: `buildTree.ts` (converts flat file list to hierarchical tree with common prefix removal and single-child directory collapsing)
 - Theme: GitHub-style light/dark via CSS custom properties (`--color-gh-*`) in `styles/app.css`, toggled by `data-theme` attribute on `<html>`. UI components use Tailwind classes like `bg-gh-bg-sidebar`, `text-gh-text-secondary`, etc.
-- Toggle button pattern: `RawToggle.tsx` and `TocToggle.tsx` follow the same style (`bg-transparent border border-gh-border rounded-md p-1.5 text-gh-text-secondary`). Header buttons (`ViewModeToggle`, `ThemeToggle`, sidebar toggle) use `text-gh-header-text` instead. New buttons should match the appropriate variant.
+- Toggle button pattern: `RawToggle.tsx` and `TocToggle.tsx` follow the same style (`bg-transparent border border-gh-border rounded-md p-1.5 text-gh-text-secondary`). Header buttons (`ViewModeToggle`, `ThemeToggle`, `WidthToggle`, sidebar toggle) use `text-gh-header-text` instead. New buttons should match the appropriate variant.
 
 ## Key Design Patterns
 
