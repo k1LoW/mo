@@ -1,0 +1,10 @@
+{
+  "name": "mo",
+  "version": "0.1.0",
+  "description": "Markdown viewer with live-reload",
+  "features": ["syntax-highlighting", "live-reload", "tab-groups"],
+  "config": {
+    "port": 6275,
+    "theme": "auto"
+  }
+}

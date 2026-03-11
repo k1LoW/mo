@@ -17,6 +17,7 @@ import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollResto
 import type { Group } from "./hooks/useApi";
 import { fetchGroups, removeFile, reorderFiles } from "./hooks/useApi";
 import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, groupToPath } from "./utils/groups";
+import { isMarkdownFile } from "./utils/filetype";
 
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 const WIDTH_STORAGE_KEY = "mo-layout-width";
@@ -171,6 +172,13 @@ export function App() {
 
   useEffect(() => {
     document.title = activeFileName || "mo";
+  }, [activeFileName]);
+
+  // Auto-close ToC panel when switching to a non-markdown file
+  useEffect(() => {
+    if (activeFileName && !isMarkdownFile(activeFileName)) {
+      setTocOpen(false);
+    }
   }, [activeFileName]);
 
   useSSE({

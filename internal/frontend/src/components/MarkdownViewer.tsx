@@ -17,6 +17,7 @@ import { RemoveButton } from "./RemoveButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import { parseFrontmatter } from "../utils/frontmatter";
 import { stripMdxSyntax } from "../utils/mdx";
+import { isMarkdownFile, detectLanguage } from "../utils/filetype";
 import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
@@ -337,12 +338,13 @@ function FrontmatterBlock({ yaml }: { yaml: string }) {
   );
 }
 
-function RawView({ content }: { content: string }) {
+function HighlightedView({ content, language }: { content: string; language: string }) {
   const [html, setHtml] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    codeToHtml(content, { lang: "markdown", theme: "github-dark" })
+    setHtml("");
+    codeToHtml(content, { lang: language, theme: "github-dark" })
       .then((result) => {
         if (!cancelled) setHtml(result);
       })
@@ -358,7 +360,7 @@ function RawView({ content }: { content: string }) {
     return () => {
       cancelled = true;
     };
-  }, [content]);
+  }, [content, language]);
 
   if (html) {
     return <div className="[&_pre]:!rounded-none" dangerouslySetInnerHTML={{ __html: html }} />;
@@ -368,6 +370,10 @@ function RawView({ content }: { content: string }) {
       <code>{content}</code>
     </pre>
   );
+}
+
+function RawView({ content }: { content: string }) {
+  return <HighlightedView content={content} language="markdown" />;
 }
 
 export function MarkdownViewer({
@@ -490,17 +496,23 @@ export function MarkdownViewer({
     [fileId, handleLinkClick],
   );
 
+  const isMarkdown = isMarkdownFile(fileName);
+  const codeLanguage = isMarkdown ? null : detectLanguage(fileName);
+
   const parsed = useMemo(
-    () => (isRawView ? null : parseFrontmatter(content)),
-    [content, isRawView],
+    () => (isMarkdown && !isRawView ? parseFrontmatter(content) : null),
+    [content, isRawView, isMarkdown],
   );
 
   const renderedContent = useMemo(() => {
+    if (!isMarkdown) {
+      return <HighlightedView content={content} language={codeLanguage!} />;
+    }
     if (isRawView) {
       return <RawView content={content} />;
     }
     const base = parsed ? parsed.content : content;
-    const md = fileName.endsWith(".mdx") ? stripMdxSyntax(base) : base;
+    const md = fileName.toLowerCase().endsWith(".mdx") ? stripMdxSyntax(base) : base;
     return (
       <>
         {parsed && <FrontmatterBlock yaml={parsed.yaml} />}
@@ -513,7 +525,7 @@ export function MarkdownViewer({
         </Markdown>
       </>
     );
-  }, [content, isRawView, parsed, components, fileName]);
+  }, [content, isRawView, isMarkdown, codeLanguage, parsed, components, fileName]);
 
   const prevHeadingsKey = useRef("");
   useEffect(() => {
@@ -565,8 +577,8 @@ export function MarkdownViewer({
         {renderedContent}
       </article>
       <div className="shrink-0 flex flex-col gap-2 -mr-4 -mt-4">
-        <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />
-        <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />
+        {isMarkdown && <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />}
+        {isMarkdown && <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />}
         <CopyButton content={content} />
         <RemoveButton onRemove={onRemoveFile} />
       </div>
