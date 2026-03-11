@@ -1077,6 +1077,17 @@ func TestAddFile_RejectsBinaryFile(t *testing.T) {
 	}
 }
 
+func TestAddFile_RejectsNonRegularFile(t *testing.T) {
+	s := newTestState(t)
+
+	dir := t.TempDir()
+
+	_, err := s.AddFile(dir, DefaultGroup)
+	if err == nil {
+		t.Fatal("expected error for non-regular (directory) path, got nil")
+	}
+}
+
 func TestAddUploadedFile(t *testing.T) {
 	t.Run("adds uploaded file to group", func(t *testing.T) {
 		s := newTestState(t)
