@@ -986,10 +986,13 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 	})
 
 	var deeplinks []deeplinkEntry
+	var totalFiles, skippedFiles int
 	for group, files := range filesByGroup {
 		for _, f := range files {
+			totalFiles++
 			entry, err := state.AddFile(f, group)
 			if err != nil {
+				skippedFiles++
 				slog.Warn("skipping file", "path", f, "error", err)
 				continue
 			}
@@ -998,6 +1001,9 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 				Path: entry.Path,
 			})
 		}
+	}
+	if totalFiles > 0 && skippedFiles == totalFiles {
+		return fmt.Errorf("all %d file(s) were skipped (unsupported file type)", totalFiles)
 	}
 
 	for group, pats := range patternsByGroup {

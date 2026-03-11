@@ -1126,6 +1126,62 @@ func TestAddUploadedFile(t *testing.T) {
 	})
 }
 
+func TestHandleAddFile_RejectsBinaryFile(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("returns 400 for binary file", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		binFile := filepath.Join(dir, "image.png")
+		os.WriteFile(binFile, []byte{0x89, 0x50, 0x4e, 0x47, 0x00}, 0o600) //nolint:errcheck
+
+		body, err := json.Marshal(addFileRequest{Path: binFile, Group: DefaultGroup})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/_/api/files", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("returns 200 for text file", func(t *testing.T) {
+		s := newTestState(t)
+		handler := NewHandler(s)
+
+		txtFile := filepath.Join(dir, "readme.md")
+		os.WriteFile(txtFile, []byte("# Hello"), 0o600) //nolint:errcheck
+
+		body, err := json.Marshal(addFileRequest{Path: txtFile, Group: DefaultGroup})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/_/api/files", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var entry FileEntry
+		if err := json.NewDecoder(rec.Body).Decode(&entry); err != nil {
+			t.Fatal(err)
+		}
+		if entry.Name != "readme.md" {
+			t.Fatalf("got name %q, want %q", entry.Name, "readme.md")
+		}
+	})
+}
+
 func TestHandleUploadFile(t *testing.T) {
 	t.Run("uploads file via HTTP", func(t *testing.T) {
 		s := newTestState(t)

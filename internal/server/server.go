@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"errors"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -78,9 +78,9 @@ type State struct {
 	patterns    []*GlobPattern
 	watchedDirs map[string]int // directory → reference count
 
-	backupCh     chan struct{}       // dirty signal (buffered, size 1)
-	backupSaveFn func(RestoreData)  // backup write callback
-	backupDone   chan struct{}       // closed when backupLoop exits
+	backupCh     chan struct{}     // dirty signal (buffered, size 1)
+	backupSaveFn func(RestoreData) // backup write callback
+	backupDone   chan struct{}     // closed when backupLoop exits
 }
 
 func NewState(ctx context.Context) *State {
@@ -1067,8 +1067,8 @@ func handleAddFile(state *State) http.HandlerFunc {
 }
 
 func handleUploadFile(state *State) http.HandlerFunc {
-	const maxRequestSize = 12 << 20  // 12MB (headroom for JSON envelope)
-	const maxContentSize = 10 << 20  // 10MB
+	const maxRequestSize = 12 << 20 // 12MB (headroom for JSON envelope)
+	const maxContentSize = 10 << 20 // 10MB
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
 		var req uploadFileRequest
