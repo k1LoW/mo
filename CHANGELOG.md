@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.18.2](https://github.com/k1LoW/mo/compare/v0.18.1...v0.18.2) - 2026-03-11
+### Other Changes
+- feat: reject binary files in AddFile by @k1LoW in https://github.com/k1LoW/mo/pull/107
+- feat: syntax highlight non-markdown text files with Shiki by @k1LoW in https://github.com/k1LoW/mo/pull/108
+
 ## [v0.18.1](https://github.com/k1LoW/mo/compare/v0.18.0...v0.18.1) - 2026-03-10
 ### Other Changes
 - feat: add --skip-bind-address-confirmation flag to bypass non-loopback bind prompt by @110y in https://github.com/k1LoW/mo/pull/103
