@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.18.4](https://github.com/k1LoW/mo/compare/v0.18.3...v0.18.4) - 2026-03-13
+### Other Changes
+- refactor: apply modernize linter suggestions by @k1LoW in https://github.com/k1LoW/mo/pull/113
+
 ## [v0.18.3](https://github.com/k1LoW/mo/compare/v0.18.2...v0.18.3) - 2026-03-13
 ### Dependency Updates ⬆️
 - chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/111
