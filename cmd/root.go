@@ -54,6 +54,9 @@ var (
 	clearBackup      bool
 	jsonOutput       bool
 	dangerouslyAllowRemoteAccess bool
+	noRestart        bool
+	noDelete         bool
+	readOnly         bool
 )
 
 var rootCmd = &cobra.Command{
@@ -172,6 +175,9 @@ func init() {
 	rootCmd.Flags().BoolVar(&clearBackup, "clear", false, "Clear saved session for the specified port")
 	rootCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output structured data as JSON to stdout")
 	rootCmd.Flags().BoolVar(&dangerouslyAllowRemoteAccess, "dangerously-allow-remote-access", false, "Allow remote access without authentication. Recommended only for trusted networks.")
+	rootCmd.Flags().BoolVar(&noRestart, "no-restart", false, "Disable server restart from the browser UI")
+	rootCmd.Flags().BoolVar(&noDelete, "no-delete", false, "Disable file removal from the browser UI")
+	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "Disable restart and file removal from the browser UI (implies --no-restart and --no-delete)")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -337,6 +343,12 @@ func run(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(os.Stderr, "mo: canceled")
 			return nil
 		}
+	}
+
+	// --read-only implies both granular flags
+	if readOnly {
+		noRestart = true
+		noDelete = true
 	}
 
 	if foreground {
@@ -968,6 +980,7 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 	defer cleanup()
 
 	state := server.NewState(ctx)
+	state.Configure(noRestart, noDelete)
 
 	state.EnableBackup(ctx, func(data server.RestoreData) {
 		if err := backup.Save(port, data); err != nil {
@@ -1079,7 +1092,14 @@ func spawnNewProcess(addr string, restoreFile string) (*os.Process, error) {
 		return nil, fmt.Errorf("cannot parse addr: %w", err)
 	}
 
-	cmd := exec.Command(binPath, "--port", p, "--bind", h, "--no-open", "--foreground", "--restore", restoreFile) //nolint:gosec
+	args := []string{"--port", p, "--bind", h, "--no-open", "--foreground", "--restore", restoreFile}
+	if noRestart {
+		args = append(args, "--no-restart")
+	}
+	if noDelete {
+		args = append(args, "--no-delete")
+	}
+	cmd := exec.Command(binPath, args...) //nolint:gosec
 	setSysProcAttr(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start new process: %w", err)

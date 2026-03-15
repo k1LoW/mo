@@ -85,6 +85,15 @@ type State struct {
 	backupCh     chan struct{}     // dirty signal (buffered, size 1)
 	backupSaveFn func(RestoreData) // backup write callback
 	backupDone   chan struct{}     // closed when backupLoop exits
+
+	noRestart bool
+	noDelete  bool
+}
+
+// Configure sets server behaviour flags. Call before serving.
+func (s *State) Configure(noRestart, noDelete bool) {
+	s.noRestart = noRestart
+	s.noDelete = noDelete
 }
 
 const defaultFileChangeDebounce = 200 * time.Millisecond
@@ -1081,7 +1090,7 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("POST /_/api/restart", handleRestart(state))
 	mux.HandleFunc("POST /_/api/shutdown", handleShutdown(state))
 	mux.HandleFunc("GET /_/api/status", handleStatus(state))
-	mux.HandleFunc("GET /_/api/version", handleVersion())
+	mux.HandleFunc("GET /_/api/version", handleVersion(state))
 	mux.HandleFunc("GET /_/events", handleSSE(state))
 	mux.HandleFunc("GET /", handleSPA())
 
@@ -1167,6 +1176,10 @@ func handleUploadFile(state *State) http.HandlerFunc {
 
 func handleRemoveFile(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if state.noDelete {
+			http.Error(w, "delete disabled", http.StatusForbidden)
+			return
+		}
 		id := r.PathValue("id")
 		if id == "" {
 			http.Error(w, "missing file id", http.StatusBadRequest)
@@ -1407,6 +1420,10 @@ func handleRemovePattern(state *State) http.HandlerFunc {
 
 func handleRestart(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if state.noRestart {
+			http.Error(w, "restart disabled", http.StatusForbidden)
+			return
+		}
 		restoreFile, err := state.ExportState()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1468,13 +1485,16 @@ func handleStatus(state *State) http.HandlerFunc {
 	}
 }
 
-func handleVersion() http.HandlerFunc {
+func handleVersion(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]string{
-			"version":  version.Version,
-			"revision": version.Revision,
-		}); err != nil {
+		resp := map[string]any{
+			"version":   version.Version,
+			"revision":  version.Revision,
+			"noRestart": state.noRestart,
+			"noDelete":  state.noDelete,
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			slog.Error("failed to encode version response", "error", err)
 		}
 	}

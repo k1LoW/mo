@@ -1,17 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
-import { restartServer, fetchVersion, type VersionInfo } from "../hooks/useApi";
+import { useCallback, useState } from "react";
+import { fetchVersion, restartServer, type VersionInfo } from "../hooks/useApi";
 
 type Status = "idle" | "restarting";
 
-export function RestartButton() {
-  const [status, setStatus] = useState<Status>("idle");
-  const [version, setVersion] = useState<VersionInfo | null>(null);
+interface RestartButtonProps {
+  version: VersionInfo | null;
+  noRestart?: boolean;
+}
 
-  useEffect(() => {
-    fetchVersion()
-      .then(setVersion)
-      .catch(() => {});
-  }, []);
+export function RestartButton({ version, noRestart }: RestartButtonProps) {
+  const [status, setStatus] = useState<Status>("idle");
 
   const handleClick = useCallback(async () => {
     if (status === "restarting") return;
@@ -36,6 +34,8 @@ export function RestartButton() {
     };
     poll();
   }, [status]);
+
+  if (noRestart) return null;
 
   const title = version
     ? `mo ${version.version} (${version.revision})\nClick to restart`

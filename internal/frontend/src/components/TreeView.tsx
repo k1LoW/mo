@@ -47,6 +47,7 @@ interface TreeViewProps {
   onMoveToGroup: (id: string, group: string) => void;
   onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
+  noDelete?: boolean;
 }
 
 export const TreeView = forwardRef<TreeViewHandle, TreeViewProps>(function TreeView({
@@ -61,6 +62,7 @@ export const TreeView = forwardRef<TreeViewHandle, TreeViewProps>(function TreeV
   onMoveToGroup,
   onRemove,
   menuRef,
+  noDelete,
 }, ref) {
   const tree = useMemo(() => buildTree(files), [files]);
   const [prevGroup, setPrevGroup] = useState(activeGroup);
@@ -119,6 +121,7 @@ export const TreeView = forwardRef<TreeViewHandle, TreeViewProps>(function TreeV
           menuRef={menuRef}
           collapsedPaths={collapsedPaths}
           onToggleCollapse={handleToggleCollapse}
+          noDelete={noDelete}
         />
       ))}
     </>
@@ -139,6 +142,7 @@ interface TreeNodeItemProps {
   menuRef: React.RefObject<HTMLDivElement | null>;
   collapsedPaths: Set<string>;
   onToggleCollapse: (path: string) => void;
+  noDelete?: boolean;
 }
 
 function TreeNodeItem({
@@ -155,6 +159,7 @@ function TreeNodeItem({
   menuRef,
   collapsedPaths,
   onToggleCollapse,
+  noDelete,
 }: TreeNodeItemProps) {
   if (node.file != null) {
     return (
@@ -171,6 +176,7 @@ function TreeNodeItem({
         onMoveToGroup={onMoveToGroup}
         onRemove={onRemove}
         menuRef={menuRef}
+        noDelete={noDelete}
       />
     );
   }
@@ -219,6 +225,7 @@ function TreeNodeItem({
             menuRef={menuRef}
             collapsedPaths={collapsedPaths}
             onToggleCollapse={onToggleCollapse}
+            noDelete={noDelete}
           />
         ))}
     </div>
@@ -238,6 +245,7 @@ interface FileNodeItemProps {
   onMoveToGroup: (id: string, group: string) => void;
   onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
+  noDelete?: boolean;
 }
 
 function FileNodeItem({
@@ -253,6 +261,7 @@ function FileNodeItem({
   onMoveToGroup,
   onRemove,
   menuRef,
+  noDelete,
 }: FileNodeItemProps) {
   const isActive = file.id === activeFileId;
 
@@ -280,6 +289,7 @@ function FileNodeItem({
         onMoveToGroup={onMoveToGroup}
         onRemove={onRemove}
         menuRef={menuRef}
+        noDelete={noDelete}
       />
     </div>
   );

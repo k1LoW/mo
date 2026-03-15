@@ -47,6 +47,7 @@ interface FileItemProps {
   onMoveToGroup: (id: string, group: string) => void;
   onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
+  noDelete?: boolean;
 }
 
 function FileItem({
@@ -60,6 +61,7 @@ function FileItem({
   onMoveToGroup,
   onRemove,
   menuRef,
+  noDelete,
 }: FileItemProps) {
   return (
     <div className="relative group/file">
@@ -84,6 +86,7 @@ function FileItem({
         onMoveToGroup={onMoveToGroup}
         onRemove={onRemove}
         menuRef={menuRef}
+        noDelete={noDelete}
       />
     </div>
   );
@@ -117,6 +120,7 @@ interface SidebarProps {
   searchQuery: string | null;
   onSearchQueryChange: (query: string | null) => void;
   treeViewRef?: React.Ref<TreeViewHandle>;
+  noDelete?: boolean;
 }
 
 export function Sidebar({
@@ -129,6 +133,7 @@ export function Sidebar({
   searchQuery,
   onSearchQueryChange,
   treeViewRef,
+  noDelete,
 }: SidebarProps) {
   const allFiles = useMemo(() => {
     const currentGroup = groups.find((g) => g.name === activeGroup);
@@ -294,6 +299,7 @@ export function Sidebar({
             onMoveToGroup={handleMoveToGroup}
             onRemove={handleRemove}
             menuRef={menuRef}
+            noDelete={noDelete}
           />
         ) : isSearching ? (
           files.map((f) => (
@@ -309,6 +315,7 @@ export function Sidebar({
               onMoveToGroup={handleMoveToGroup}
               onRemove={handleRemove}
               menuRef={menuRef}
+              noDelete={noDelete}
             />
           ))
         ) : (
@@ -331,6 +338,7 @@ export function Sidebar({
                   onMoveToGroup={handleMoveToGroup}
                   onRemove={handleRemove}
                   menuRef={menuRef}
+                  noDelete={noDelete}
                 />
               ))}
             </SortableContext>

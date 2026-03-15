@@ -15,8 +15,8 @@ import { useSSE } from "./hooks/useSSE";
 import { useFileDrop } from "./hooks/useFileDrop";
 import { useActiveHeading } from "./hooks/useActiveHeading";
 import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
-import type { Group } from "./hooks/useApi";
-import { fetchGroups, removeFile, reorderFiles } from "./hooks/useApi";
+import type { Group, VersionInfo } from "./hooks/useApi";
+import { fetchGroups, fetchVersion, removeFile, reorderFiles } from "./hooks/useApi";
 import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, groupToPath } from "./utils/groups";
 import { isMarkdownFile } from "./utils/filetype";
 
@@ -50,6 +50,7 @@ export function App() {
       return false;
     }
   });
+  const [version, setVersion] = useState<VersionInfo | null>(null);
   const knownFileIds = useRef<Set<string>>(new Set());
   const treeViewRef = useRef<TreeViewHandle>(null);
   const [treeAllCollapsed, setTreeAllCollapsed] = useState(false);
@@ -148,6 +149,9 @@ export function App() {
         knownFileIds.current = allFileIds(data);
         setGroups(data);
       })
+      .catch(() => {});
+    fetchVersion()
+      .then(setVersion)
       .catch(() => {});
   }, []);
 
@@ -351,6 +355,7 @@ export function App() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             treeViewRef={treeViewRef}
+            noDelete={version?.noDelete}
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden">
@@ -367,6 +372,7 @@ export function App() {
                 onTocToggle={() => setTocOpen((v) => !v)}
                 onRemoveFile={handleRemoveFile}
                 isWide={isWide}
+                noDelete={version?.noDelete}
               />
             ) : (
               <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">
@@ -383,7 +389,7 @@ export function App() {
           />
         )}
       </div>
-      <RestartButton />
+      <RestartButton version={version} noRestart={version?.noRestart} />
       {isDragging && <DropOverlay />}
     </div>
   );

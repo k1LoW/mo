@@ -18,6 +18,8 @@ export interface FileContent {
 export interface VersionInfo {
   version: string;
   revision: string;
+  noRestart?: boolean;
+  noDelete?: boolean;
 }
 
 export async function fetchGroups(): Promise<Group[]> {

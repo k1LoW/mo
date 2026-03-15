@@ -33,6 +33,7 @@ interface MarkdownViewerProps {
   onTocToggle: () => void;
   onRemoveFile: () => void;
   isWide: boolean;
+  noDelete?: boolean;
 }
 
 function getMermaidTheme(): "dark" | "default" {
@@ -387,6 +388,7 @@ export function MarkdownViewer({
   onTocToggle,
   onRemoveFile,
   isWide,
+  noDelete,
 }: MarkdownViewerProps) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
@@ -580,7 +582,7 @@ export function MarkdownViewer({
         {isMarkdown && <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />}
         {isMarkdown && <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />}
         <CopyButton content={content} />
-        <RemoveButton onRemove={onRemoveFile} />
+        {!noDelete && <RemoveButton onRemove={onRemoveFile} />}
       </div>
     </div>
   );
