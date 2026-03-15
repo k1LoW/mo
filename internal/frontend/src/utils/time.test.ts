@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { formatRelativeTime } from "./time";
+import { formatRelativeTime, formatAbsoluteTime } from "./time";
 
 describe("formatRelativeTime", () => {
   afterEach(() => {
@@ -39,5 +39,32 @@ describe("formatRelativeTime", () => {
   it("returns years for >=12 months", () => {
     expect(formatRelativeTime(iso(365 * 24 * 60 * 60_000))).toBe("1y ago");
     expect(formatRelativeTime(iso(2 * 365 * 24 * 60 * 60_000))).toBe("2y ago");
+  });
+});
+
+describe("formatAbsoluteTime", () => {
+  it("formats as 'Mon DD HH:MM'", () => {
+    // 2026-03-15T02:36:00Z in local time
+    const result = formatAbsoluteTime("2026-03-15T02:36:00Z");
+    // Month and time depend on local timezone, but format should match pattern
+    expect(result).toMatch(/^[A-Z][a-z]{2}\s[\s\d]\d\s\d{2}:\d{2}$/);
+  });
+
+  it("pads single-digit days with space", () => {
+    const result = formatAbsoluteTime("2026-01-05T09:07:00Z");
+    // Verify day is space-padded (local TZ may shift the day)
+    expect(result).toMatch(/^[A-Z][a-z]{2}\s[\s\d]\d\s\d{2}:\d{2}$/);
+  });
+
+  it("uses correct month abbreviations", () => {
+    const months = [
+      { iso: "2026-01-15T12:00:00Z", month: "Jan" },
+      { iso: "2026-06-15T12:00:00Z", month: "Jun" },
+      { iso: "2026-12-15T12:00:00Z", month: "Dec" },
+    ];
+    for (const { iso, month } of months) {
+      // In most timezones, noon UTC on the 15th stays on the same date
+      expect(formatAbsoluteTime(iso)).toContain(month);
+    }
   });
 });

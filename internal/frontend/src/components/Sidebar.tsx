@@ -21,7 +21,8 @@ import type { ViewMode } from "./ViewModeToggle";
 import { TreeView, type TreeViewHandle } from "./TreeView";
 import { FileContextMenu } from "./FileContextMenu";
 import { FileIcon } from "./FileIcon";
-import { formatRelativeTime } from "../utils/time";
+import { formatRelativeTime, formatAbsoluteTime } from "../utils/time";
+import type { TimestampMode } from "./TimestampToggle";
 
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
@@ -49,7 +50,7 @@ interface FileItemProps {
   onRemove: (id: string) => void;
   menuRef: React.RefObject<HTMLDivElement | null>;
   noDelete?: boolean;
-  showTimestamps?: boolean;
+  timestampMode?: TimestampMode;
 }
 
 function FileItem({
@@ -64,7 +65,7 @@ function FileItem({
   onRemove,
   menuRef,
   noDelete,
-  showTimestamps,
+  timestampMode,
 }: FileItemProps) {
   return (
     <div className="relative group/file">
@@ -79,9 +80,9 @@ function FileItem({
       >
         <FileIcon uploaded={file.uploaded} />
         <span className="overflow-hidden text-ellipsis whitespace-nowrap pr-6">{file.name}</span>
-        {showTimestamps && file.modTime && (
+        {timestampMode && timestampMode !== "off" && file.modTime && (
           <span className="ml-auto shrink-0 text-xs text-gh-text-secondary font-normal pr-6" title={new Date(file.modTime).toLocaleString()}>
-            {formatRelativeTime(file.modTime)}
+            {timestampMode === "relative" ? formatRelativeTime(file.modTime) : formatAbsoluteTime(file.modTime)}
           </span>
         )}
       </button>
@@ -130,7 +131,7 @@ interface SidebarProps {
   treeViewRef?: React.Ref<TreeViewHandle>;
   noDelete?: boolean;
   noFileMove?: boolean;
-  showTimestamps?: boolean;
+  timestampMode?: TimestampMode;
 }
 
 export function Sidebar({
@@ -145,7 +146,7 @@ export function Sidebar({
   treeViewRef,
   noDelete,
   noFileMove,
-  showTimestamps,
+  timestampMode,
 }: SidebarProps) {
   const allFiles = useMemo(() => {
     const currentGroup = groups.find((g) => g.name === activeGroup);
@@ -313,7 +314,7 @@ export function Sidebar({
             onRemove={handleRemove}
             menuRef={menuRef}
             noDelete={noDelete}
-            showTimestamps={showTimestamps}
+            timestampMode={timestampMode}
           />
         ) : isSearching ? (
           files.map((f) => (
@@ -330,7 +331,7 @@ export function Sidebar({
               onRemove={handleRemove}
               menuRef={menuRef}
               noDelete={noDelete}
-              showTimestamps={showTimestamps}
+              timestampMode={timestampMode}
             />
           ))
         ) : (
@@ -354,7 +355,7 @@ export function Sidebar({
                   onRemove={handleRemove}
                   menuRef={menuRef}
                   noDelete={noDelete}
-                  showTimestamps={showTimestamps}
+                  timestampMode={timestampMode}
                 />
               ))}
             </SortableContext>

@@ -13,3 +13,14 @@ export function formatRelativeTime(iso: string): string {
   if (diffMonth < 12) return `${diffMonth}mo ago`;
   return `${Math.floor(diffMonth / 12)}y ago`;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function formatAbsoluteTime(iso: string): string {
+  const d = new Date(iso);
+  const mon = MONTHS[d.getMonth()];
+  const day = d.getDate();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${mon} ${String(day).padStart(2, " ")} ${hh}:${mm}`;
+}
