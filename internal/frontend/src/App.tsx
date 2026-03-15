@@ -19,7 +19,7 @@ import { useActiveHeading } from "./hooks/useActiveHeading";
 import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
 import type { Group, VersionInfo } from "./hooks/useApi";
 import { fetchGroups, fetchVersion, removeFile, reorderFiles } from "./hooks/useApi";
-import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, groupToPath } from "./utils/groups";
+import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, parseFilenameFromSearch, groupToPath } from "./utils/groups";
 import { isMarkdownFile } from "./utils/filetype";
 
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
@@ -66,6 +66,7 @@ export function App() {
   const knownFileIds = useRef<Set<string>>(new Set());
   const treeViewRef = useRef<TreeViewHandle>(null);
   const [treeAllCollapsed, setTreeAllCollapsed] = useState(false);
+  const [initialFilename, setInitialFilename] = useState<string | null>(() => parseFilenameFromSearch(window.location.search));
   const [initialFileId, setInitialFileId] = useState<string | null>(() => {
     const fromUrl = parseFileIdFromSearch(window.location.search);
     if (fromUrl) return fromUrl;
@@ -107,10 +108,17 @@ export function App() {
       setActiveGroup(sortedGroups[0].name);
     } else if (group.files.length === 0) {
       setActiveFileId(null);
-    } else if (initialFileId != null) {
+    } else if (initialFileId != null || initialFilename != null) {
+      // Resolve initialFilename to an ID by matching against the group's files
+      let resolvedId: string | null = initialFileId;
+      if (resolvedId == null && initialFilename != null) {
+        const match = group.files.find((f) => f.name === initialFilename);
+        resolvedId = match?.id ?? null;
+      }
       setInitialFileId(null);
+      setInitialFilename(null);
       setActiveFileId(
-        group.files.some((f) => f.id === initialFileId) ? initialFileId : group.files[0].id,
+        resolvedId && group.files.some((f) => f.id === resolvedId) ? resolvedId : group.files[0].id,
       );
     } else {
       setActiveFileId((prev) => {
@@ -175,20 +183,32 @@ export function App() {
     }
   }, [activeGroup]);
 
-  // Sync ?file=<id> in URL (shareable mode) or clear it after initial consume (default mode).
+  // Sync ?file=<id> or ?filename=<name> in URL (shareable mode) or clear it after initial consume.
   // Wait for version to load before clearing so we don't race with shareable detection.
   useEffect(() => {
     if (version === null) return;
     if (version.shareable) {
-      const search = activeFileId ? `?file=${activeFileId}` : "";
+      let search = "";
+      if (activeFileId) {
+        if (version.trueFilenames) {
+          const group = groups.find((g) => g.name === activeGroup);
+          const file = group?.files.find((f) => f.id === activeFileId);
+          const isUnique = file && group!.files.filter((f) => f.name === file.name).length === 1;
+          search = file && isUnique
+            ? `?filename=${encodeURIComponent(file.name)}`
+            : `?file=${activeFileId}`;
+        } else {
+          search = `?file=${activeFileId}`;
+        }
+      }
       const next = window.location.pathname + search;
       if (window.location.pathname + window.location.search !== next) {
         window.history.replaceState(null, "", next);
       }
-    } else if (initialFileId === null && window.location.search) {
+    } else if (initialFileId === null && initialFilename === null && window.location.search) {
       window.history.replaceState(null, "", window.location.pathname);
     }
-  }, [activeFileId, initialFileId, version]);
+  }, [activeFileId, activeGroup, groups, initialFileId, initialFilename, version]);
 
   const activeFileName = useMemo(
     () =>

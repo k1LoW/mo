@@ -24,6 +24,7 @@ export interface VersionInfo {
   noFileMove?: boolean;
   noNewFileAutoSelect?: boolean;
   shareable?: boolean;
+  trueFilenames?: boolean;
 }
 
 export async function fetchGroups(): Promise<Group[]> {

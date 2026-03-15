@@ -29,3 +29,14 @@ export function parseFileIdFromSearch(search: string): string | null {
   if (raw == null || raw === "") return null;
   return raw;
 }
+
+export function parseFilenameFromSearch(search: string): string | null {
+  const params = new URLSearchParams(search);
+  const raw = params.get("filename");
+  if (raw == null || raw === "") return null;
+  return raw;
+}
+
+export function buildFileUrlByName(groupName: string, fileName: string): string {
+  return `${groupToPath(groupName)}?filename=${encodeURIComponent(fileName)}`;
+}

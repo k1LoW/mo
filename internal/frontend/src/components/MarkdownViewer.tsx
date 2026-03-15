@@ -15,6 +15,7 @@ import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
 import { RemoveButton } from "./RemoveButton";
 import { ShareButton } from "./ShareButton";
+import { ShareRawButton } from "./ShareRawButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import { parseFrontmatter } from "../utils/frontmatter";
 import { stripMdxSyntax } from "../utils/mdx";
@@ -587,6 +588,7 @@ export function MarkdownViewer({
         <CopyButton content={content} />
         {!noDelete && <RemoveButton onRemove={onRemoveFile} />}
         {shareable && <ShareButton />}
+        {shareable && <ShareRawButton fileId={fileId} />}
       </div>
     </div>
   );

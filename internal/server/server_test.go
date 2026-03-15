@@ -400,7 +400,7 @@ func TestHandleVersion(t *testing.T) {
 
 	t.Run("reflects Configure flags", func(t *testing.T) {
 		s := newTestState(t)
-		s.Configure(true, true, true, true, true)
+		s.Configure(true, true, true, true, true, true)
 		handler := NewHandler(s)
 		req := httptest.NewRequest("GET", "/_/api/version", nil)
 		rec := httptest.NewRecorder()
@@ -451,7 +451,7 @@ func TestHandleRemoveFile_NoDelete(t *testing.T) {
 
 	t.Run("returns 403 when noDelete is true", func(t *testing.T) {
 		s := newTestState(t)
-		s.Configure(false, true, false, false, false)
+		s.Configure(false, true, false, false, false, false)
 		s.groups[DefaultGroup] = &Group{
 			Name:  DefaultGroup,
 			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
@@ -499,7 +499,7 @@ func TestHandleMoveFile_NoFileMove(t *testing.T) {
 
 	t.Run("returns 403 when noFileMove is true", func(t *testing.T) {
 		s := newTestState(t)
-		s.Configure(false, false, true, false, false)
+		s.Configure(false, false, true, false, false, false)
 		s.groups[DefaultGroup] = &Group{
 			Name:  DefaultGroup,
 			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
@@ -530,7 +530,7 @@ func TestHandleRestart_NoRestart(t *testing.T) {
 
 	t.Run("returns 403 when noRestart is true", func(t *testing.T) {
 		s := newTestState(t)
-		s.Configure(true, false, false, false, false)
+		s.Configure(true, false, false, false, false, false)
 		s.groups[DefaultGroup] = &Group{
 			Name:  DefaultGroup,
 			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
@@ -1621,6 +1621,98 @@ func TestUploadedFileContent(t *testing.T) {
 
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("got status %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+}
+
+func TestHandleFileRawText(t *testing.T) {
+	t.Run("serves file as plain text when shareable", func(t *testing.T) {
+		s := newTestState(t)
+		s.Configure(false, false, false, false, true, false)
+
+		tmp := t.TempDir()
+		p := filepath.Join(tmp, "hello.md")
+		os.WriteFile(p, []byte("# Hello World\n\nSome content."), 0o644)
+
+		s.AddFile(p, DefaultGroup)
+		id := FileID(p)
+
+		handler := NewHandler(s)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/_/api/files/%s/raw", id), nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		ct := rec.Header().Get("Content-Type")
+		if ct != "text/plain; charset=utf-8" {
+			t.Fatalf("got Content-Type %q, want %q", ct, "text/plain; charset=utf-8")
+		}
+
+		body := rec.Body.String()
+		if body != "# Hello World\n\nSome content." {
+			t.Fatalf("got body %q, want %q", body, "# Hello World\n\nSome content.")
+		}
+	})
+
+	t.Run("returns 403 when not shareable", func(t *testing.T) {
+		s := newTestState(t)
+		// shareable is false by default
+
+		tmp := t.TempDir()
+		p := filepath.Join(tmp, "hello.md")
+		os.WriteFile(p, []byte("# Hello"), 0o644)
+
+		s.AddFile(p, DefaultGroup)
+		id := FileID(p)
+
+		handler := NewHandler(s)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/_/api/files/%s/raw", id), nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusForbidden)
+		}
+	})
+
+	t.Run("serves uploaded file as plain text", func(t *testing.T) {
+		s := newTestState(t)
+		s.Configure(false, false, false, false, true, false)
+		entry := s.AddUploadedFile("test.md", "# Uploaded", DefaultGroup)
+
+		handler := NewHandler(s)
+		req := httptest.NewRequest("GET", fmt.Sprintf("/_/api/files/%s/raw", entry.ID), nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		body := rec.Body.String()
+		if body != "# Uploaded" {
+			t.Fatalf("got body %q, want %q", body, "# Uploaded")
+		}
+	})
+
+	t.Run("returns 404 for unknown file", func(t *testing.T) {
+		s := newTestState(t)
+		s.Configure(false, false, false, false, true, false)
+
+		handler := NewHandler(s)
+		req := httptest.NewRequest("GET", "/_/api/files/nonexist/raw", nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusNotFound)
 		}
 	})
 }

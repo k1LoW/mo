@@ -92,15 +92,17 @@ type State struct {
 	noFileMove         bool
 	noNewFileAutoSelect bool
 	shareable          bool
+	trueFilenames      bool
 }
 
 // Configure sets server behaviour flags. Call before serving.
-func (s *State) Configure(noRestart, noDelete, noFileMove, noNewFileAutoSelect, shareable bool) {
+func (s *State) Configure(noRestart, noDelete, noFileMove, noNewFileAutoSelect, shareable, trueFilenames bool) {
 	s.noRestart = noRestart
 	s.noDelete = noDelete
 	s.noFileMove = noFileMove
 	s.noNewFileAutoSelect = noNewFileAutoSelect
 	s.shareable = shareable
+	s.trueFilenames = trueFilenames
 }
 
 const defaultFileChangeDebounce = 200 * time.Millisecond
@@ -1090,6 +1092,7 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("GET /_/api/groups", handleGroups(state))
 	mux.HandleFunc("PUT /_/api/reorder", handleReorderFiles(state))
 	mux.HandleFunc("GET /_/api/files/{id}/content", handleFileContent(state))
+	mux.HandleFunc("GET /_/api/files/{id}/raw", handleFileTextRaw(state))
 	mux.HandleFunc("GET /_/api/files/{id}/raw/{path...}", handleFileRaw(state))
 	mux.HandleFunc("POST /_/api/files/open", handleOpenFile(state))
 	mux.HandleFunc("POST /_/api/patterns", handleAddPattern(state))
@@ -1311,6 +1314,42 @@ func handleFileContent(state *State) http.HandlerFunc {
 	}
 }
 
+func handleFileTextRaw(state *State) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !state.shareable {
+			http.Error(w, "sharing not enabled", http.StatusForbidden)
+			return
+		}
+
+		id := r.PathValue("id")
+		if id == "" {
+			http.Error(w, "missing file id", http.StatusBadRequest)
+			return
+		}
+
+		entry := state.FindFile(id)
+		if entry == nil {
+			http.Error(w, "file not found", http.StatusNotFound)
+			return
+		}
+
+		var content string
+		if entry.Uploaded {
+			content = entry.content
+		} else {
+			data, err := os.ReadFile(entry.Path) //nolint:gosec // Path is server-managed, not user-supplied
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			content = string(data)
+		}
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprint(w, content)
+	}
+}
+
 func handleFileRaw(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -1521,6 +1560,7 @@ func handleVersion(state *State) http.HandlerFunc {
 			"noFileMove":         state.noFileMove,
 			"noNewFileAutoSelect": state.noNewFileAutoSelect,
 			"shareable":          state.shareable,
+			"trueFilenames":      state.trueFilenames,
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			slog.Error("failed to encode version response", "error", err)

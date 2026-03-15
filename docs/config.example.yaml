@@ -26,6 +26,10 @@ newfile-no-autoselect: true
 ## expose document links in the address bar
 shareable: true
 
+## use actual filenames in URLs instead of hash IDs (?filename=foo.md)
+## falls back to hash ID if filenames are not unique within a group
+true-filenames: true
+
 #Groups
 groups:
   - name: default

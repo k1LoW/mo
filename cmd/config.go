@@ -20,6 +20,7 @@ type configFile struct {
 	NewFileNoAutoSelect          bool          `yaml:"newfile-no-autoselect"`
 	ReadOnly                     bool          `yaml:"read-only"`
 	Shareable                    bool          `yaml:"shareable"`
+	TrueFilenames                bool          `yaml:"true-filenames"`
 	DangerouslyAllowRemoteAccess bool          `yaml:"dangerously-allow-remote-access"`
 	Quiet                        bool          `yaml:"quiet"`
 	Groups                       []groupConfig `yaml:"groups"`
@@ -75,6 +76,9 @@ func applyConfig(cmd *cobra.Command, cfg *configFile) {
 	}
 	if !cmd.Flags().Changed("shareable") && cfg.Shareable {
 		shareable = true
+	}
+	if !cmd.Flags().Changed("true-filenames") && cfg.TrueFilenames {
+		trueFilenames = true
 	}
 	if !cmd.Flags().Changed("dangerously-allow-remote-access") && cfg.DangerouslyAllowRemoteAccess {
 		dangerouslyAllowRemoteAccess = true
