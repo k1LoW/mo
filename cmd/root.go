@@ -56,6 +56,7 @@ var (
 	dangerouslyAllowRemoteAccess bool
 	noRestart        bool
 	noDelete         bool
+	noFileMove           bool
 	readOnly         bool
 	shareable        bool
 	configPath       string
@@ -180,7 +181,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&dangerouslyAllowRemoteAccess, "dangerously-allow-remote-access", false, "Allow remote access without authentication. Recommended only for trusted networks.")
 	rootCmd.Flags().BoolVar(&noRestart, "no-restart", false, "Disable server restart from the browser UI")
 	rootCmd.Flags().BoolVar(&noDelete, "no-delete", false, "Disable file removal from the browser UI")
-	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "Disable restart and file removal from the browser UI (implies --no-restart and --no-delete)")
+	rootCmd.Flags().BoolVar(&noFileMove, "no-file-move", false, "Disable moving files between groups from the browser UI")
+	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "Disable restart, file removal, and file move from the browser UI (implies --no-restart, --no-delete, and --no-file-move)")
 	rootCmd.Flags().BoolVar(&shareable, "shareable", false, "Reflect the active file in the browser URL for easy sharing and deep linking")
 	rootCmd.Flags().StringVar(&configPath, "config", "", "Path to YAML config file (mutually exclusive with file arguments, --target, and --watch)")
 	rootCmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress file listing output on startup")
@@ -282,6 +284,7 @@ func run(cmd *cobra.Command, args []string) error {
 		if readOnly {
 			noRestart = true
 			noDelete = true
+			noFileMove = true
 		}
 		if ok, err := checkRemoteAccess(bind); err != nil {
 			return err
@@ -367,10 +370,11 @@ func run(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// --read-only implies both granular flags
+	// --read-only implies all granular flags
 	if readOnly {
 		noRestart = true
 		noDelete = true
+		noFileMove = true
 	}
 
 	if foreground {
@@ -1030,7 +1034,7 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 	defer cleanup()
 
 	state := server.NewState(ctx)
-	state.Configure(noRestart, noDelete, shareable)
+	state.Configure(noRestart, noDelete, noFileMove, shareable)
 
 	state.EnableBackup(ctx, func(data server.RestoreData) {
 		if err := backup.Save(port, data); err != nil {

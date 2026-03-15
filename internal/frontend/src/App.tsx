@@ -352,6 +352,7 @@ export function App() {
             onSearchQueryChange={setSearchQuery}
             treeViewRef={treeViewRef}
             noDelete={version?.noDelete}
+            noFileMove={version?.noFileMove}
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden">
@@ -369,6 +370,7 @@ export function App() {
                 onRemoveFile={handleRemoveFile}
                 isWide={isWide}
                 noDelete={version?.noDelete}
+                shareable={version?.shareable}
               />
             ) : (
               <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">

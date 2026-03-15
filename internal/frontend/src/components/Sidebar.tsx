@@ -121,6 +121,7 @@ interface SidebarProps {
   onSearchQueryChange: (query: string | null) => void;
   treeViewRef?: React.Ref<TreeViewHandle>;
   noDelete?: boolean;
+  noFileMove?: boolean;
 }
 
 export function Sidebar({
@@ -134,6 +135,7 @@ export function Sidebar({
   onSearchQueryChange,
   treeViewRef,
   noDelete,
+  noFileMove,
 }: SidebarProps) {
   const allFiles = useMemo(() => {
     const currentGroup = groups.find((g) => g.name === activeGroup);
@@ -237,6 +239,7 @@ export function Sidebar({
   );
 
   const otherGroups = useMemo(() => {
+    if (noFileMove) return [];
     return [...groups]
       .filter((g) => g.name !== activeGroup)
       .sort((a, b) => {
@@ -244,7 +247,7 @@ export function Sidebar({
         if (b.name === "default") return -1;
         return a.name.localeCompare(b.name);
       });
-  }, [groups, activeGroup]);
+  }, [groups, activeGroup, noFileMove]);
 
   const handleMoveToGroup = useCallback(async (id: string, group: string) => {
     setMenuOpenId(null);

@@ -88,13 +88,15 @@ type State struct {
 
 	noRestart bool
 	noDelete  bool
+	noFileMove    bool
 	shareable bool
 }
 
 // Configure sets server behaviour flags. Call before serving.
-func (s *State) Configure(noRestart, noDelete, shareable bool) {
+func (s *State) Configure(noRestart, noDelete, noFileMove, shareable bool) {
 	s.noRestart = noRestart
 	s.noDelete = noDelete
+	s.noFileMove = noFileMove
 	s.shareable = shareable
 }
 
@@ -1197,6 +1199,10 @@ func handleRemoveFile(state *State) http.HandlerFunc {
 
 func handleMoveFile(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if state.noFileMove {
+			http.Error(w, "move disabled", http.StatusForbidden)
+			return
+		}
 		id := r.PathValue("id")
 		if id == "" {
 			http.Error(w, "missing file id", http.StatusBadRequest)
@@ -1495,6 +1501,7 @@ func handleVersion(state *State) http.HandlerFunc {
 			"revision":  version.Revision,
 			"noRestart": state.noRestart,
 			"noDelete":  state.noDelete,
+			"noFileMove":    state.noFileMove,
 			"shareable": state.shareable,
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {

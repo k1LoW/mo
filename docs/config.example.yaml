@@ -1,0 +1,36 @@
+---
+# Server
+bind: localhost
+port: 6275
+foreground: true
+quiet: true
+no-open: true
+
+# UI behaviour
+## do not allow to restart server via UI
+#no-restart: true
+
+## do not allow to delete files via UI
+#no-delete: true
+
+## do not allow to move files between groups via UI
+#no-file-move: true
+
+## shorthand for no-restart + no-delete + no-file-move
+read-only: true
+
+## expose document links in the address bar
+shareable: true
+
+#Groups
+groups:
+  - name: default
+    watch:
+      - ./**/*.md
+      - /tmp/**/*.md
+  - name: docs
+    watch:
+      - docs/**/*.md
+
+
+

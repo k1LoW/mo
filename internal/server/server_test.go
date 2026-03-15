@@ -400,7 +400,7 @@ func TestHandleVersion(t *testing.T) {
 
 	t.Run("reflects Configure flags", func(t *testing.T) {
 		s := newTestState(t)
-		s.Configure(true, true, true)
+		s.Configure(true, true, true, true)
 		handler := NewHandler(s)
 		req := httptest.NewRequest("GET", "/_/api/version", nil)
 		rec := httptest.NewRecorder()
@@ -416,6 +416,9 @@ func TestHandleVersion(t *testing.T) {
 		}
 		if resp["noDelete"] != true {
 			t.Errorf("noDelete = %v, want true", resp["noDelete"])
+		}
+		if resp["noFileMove"] != true {
+			t.Errorf("noFileMove = %v, want true", resp["noFileMove"])
 		}
 		if resp["shareable"] != true {
 			t.Errorf("shareable = %v, want true", resp["shareable"])
@@ -445,7 +448,7 @@ func TestHandleRemoveFile_NoDelete(t *testing.T) {
 
 	t.Run("returns 403 when noDelete is true", func(t *testing.T) {
 		s := newTestState(t)
-		s.Configure(false, true, false)
+		s.Configure(false, true, false, false)
 		s.groups[DefaultGroup] = &Group{
 			Name:  DefaultGroup,
 			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
@@ -469,12 +472,62 @@ func TestHandleRemoveFile_NoDelete(t *testing.T) {
 	})
 }
 
+func TestHandleMoveFile_NoFileMove(t *testing.T) {
+	idA := testIDa
+
+	t.Run("returns 204 when noFileMove is false", func(t *testing.T) {
+		s := newTestState(t)
+		s.groups[DefaultGroup] = &Group{
+			Name:  DefaultGroup,
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
+		}
+		s.groups["other"] = &Group{Name: "other"}
+		handler := NewHandler(s)
+		body := strings.NewReader(`{"group":"other"}`)
+		req := httptest.NewRequest("PUT", "/_/api/files/"+string(idA)+"/group", body)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusNoContent)
+		}
+	})
+
+	t.Run("returns 403 when noFileMove is true", func(t *testing.T) {
+		s := newTestState(t)
+		s.Configure(false, false, true, false)
+		s.groups[DefaultGroup] = &Group{
+			Name:  DefaultGroup,
+			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},
+		}
+		s.groups["other"] = &Group{Name: "other"}
+		handler := NewHandler(s)
+		body := strings.NewReader(`{"group":"other"}`)
+		req := httptest.NewRequest("PUT", "/_/api/files/"+string(idA)+"/group", body)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("got status %d, want %d", rec.Code, http.StatusForbidden)
+		}
+		// File should still be in the original group
+		s.mu.RLock()
+		count := len(s.groups[DefaultGroup].Files)
+		s.mu.RUnlock()
+		if count != 1 {
+			t.Errorf("file was moved despite noFileMove; got %d files in default, want 1", count)
+		}
+	})
+}
+
 func TestHandleRestart_NoRestart(t *testing.T) {
 	idA := testIDa
 
 	t.Run("returns 403 when noRestart is true", func(t *testing.T) {
 		s := newTestState(t)
-		s.Configure(true, false, false)
+		s.Configure(true, false, false, false)
 		s.groups[DefaultGroup] = &Group{
 			Name:  DefaultGroup,
 			Files: []*FileEntry{{ID: idA, Name: "a.md", Path: "/a.md"}},

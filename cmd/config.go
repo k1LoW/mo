@@ -16,6 +16,7 @@ type configFile struct {
 	NoOpen                       bool          `yaml:"no-open"`
 	NoRestart                    bool          `yaml:"no-restart"`
 	NoDelete                     bool          `yaml:"no-delete"`
+	NoFileMove                   bool          `yaml:"no-file-move"`
 	ReadOnly                     bool          `yaml:"read-only"`
 	Shareable                    bool          `yaml:"shareable"`
 	DangerouslyAllowRemoteAccess bool          `yaml:"dangerously-allow-remote-access"`
@@ -61,6 +62,9 @@ func applyConfig(cmd *cobra.Command, cfg *configFile) {
 	}
 	if !cmd.Flags().Changed("no-delete") && cfg.NoDelete {
 		noDelete = true
+	}
+	if !cmd.Flags().Changed("no-file-move") && cfg.NoFileMove {
+		noFileMove = true
 	}
 	if !cmd.Flags().Changed("read-only") && cfg.ReadOnly {
 		readOnly = true

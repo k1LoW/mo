@@ -14,6 +14,7 @@ import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
 import { RemoveButton } from "./RemoveButton";
+import { ShareButton } from "./ShareButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import { parseFrontmatter } from "../utils/frontmatter";
 import { stripMdxSyntax } from "../utils/mdx";
@@ -34,6 +35,7 @@ interface MarkdownViewerProps {
   onRemoveFile: () => void;
   isWide: boolean;
   noDelete?: boolean;
+  shareable?: boolean;
 }
 
 function getMermaidTheme(): "dark" | "default" {
@@ -389,6 +391,7 @@ export function MarkdownViewer({
   onRemoveFile,
   isWide,
   noDelete,
+  shareable,
 }: MarkdownViewerProps) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
@@ -583,6 +586,7 @@ export function MarkdownViewer({
         {isMarkdown && <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />}
         <CopyButton content={content} />
         {!noDelete && <RemoveButton onRemove={onRemoveFile} />}
+        {shareable && <ShareButton />}
       </div>
     </div>
   );
