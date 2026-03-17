@@ -75,7 +75,9 @@ function FileItem({
         title={file.uploaded ? file.name : file.path}
       >
         <FileIcon uploaded={file.uploaded} />
-        <span className="overflow-hidden text-ellipsis whitespace-nowrap pr-6">{(showTitle && file.title) || file.name}</span>
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap pr-6">
+          {(showTitle && file.title) || file.name}
+        </span>
       </button>
       <FileContextMenu
         file={file}
