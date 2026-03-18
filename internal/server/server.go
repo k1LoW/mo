@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,17 +36,62 @@ type FileEntry struct {
 	content  string // in-memory content for uploaded files
 }
 
-// extractTitle returns the text of the first Markdown heading (ATX-style)
-// found in content, or "" if none is found.
-func extractTitle(content string) string {
-	for line := range strings.SplitSeq(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#") {
-			title := strings.TrimLeft(trimmed, "#")
-			title = strings.TrimSpace(title)
-			if title != "" {
-				return title
+// reATXHeading matches ATX-style headings (h1–h6) per CommonMark:
+// up to 3 spaces of indentation, 1–6 '#' characters, then a space and
+// the heading text. Trailing '#' sequences used as closing markers are
+// stripped.
+var reATXHeading = regexp.MustCompile(`^ {0,3}#{1,6}\s+(.+?)(?:\s+#+\s*)?$`)
+
+// reFrontMatter matches the opening line of front matter blocks
+// ("---", "~~~", or "```") at the start of a Markdown document.
+var reFrontMatter = regexp.MustCompile(`^(---|~~~|` + "```" + `)$`)
+
+// skipFrontMatter strips a leading front matter block (delimited by
+// "---", "~~~", or "```") from content and returns the remainder.
+// If no front matter is present the original content is returned as-is.
+func skipFrontMatter(content string) string {
+	content = strings.TrimPrefix(content, "\xef\xbb\xbf") // skip optional UTF-8 BOM
+	first, after, found := strings.Cut(content, "\n")
+	if !found || !reFrontMatter.MatchString(strings.TrimSpace(first)) {
+		return content
+	}
+	fence := strings.TrimSpace(first)
+	pos := 0
+	for pos < len(after) {
+		nl := strings.IndexByte(after[pos:], '\n')
+		var line string
+		if nl < 0 {
+			line = after[pos:]
+		} else {
+			line = after[pos : pos+nl]
+		}
+		if strings.TrimSpace(line) == fence {
+			if nl < 0 {
+				return ""
 			}
+			return after[pos+nl+1:]
+		}
+		if nl < 0 {
+			break
+		}
+		pos += nl + 1
+	}
+	return content // unclosed front matter — treat entire content as body
+}
+
+// extractTitle returns the text of the first Markdown heading (ATX-style)
+// found in content, or "" if none is found. A leading front matter block
+// is skipped before scanning.
+//
+// NOTE: fenced code blocks in the body are not tracked, so a line like
+// "# comment" inside a ```-block may be matched. Full Markdown parsing
+// is intentionally avoided to keep the function simple and fast.
+func extractTitle(content string) string {
+	for line := range strings.SplitSeq(skipFrontMatter(content), "\n") {
+		// Match against the raw line (with \r trimmed) so that the
+		// regex's indentation check (0-3 spaces) is applied correctly.
+		if m := reATXHeading.FindStringSubmatch(strings.TrimRight(line, "\r")); m != nil {
+			return strings.TrimSpace(m[1])
 		}
 	}
 	return ""
