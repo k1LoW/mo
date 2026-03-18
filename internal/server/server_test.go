@@ -1562,6 +1562,7 @@ func TestExtractTitle(t *testing.T) {
 		{"heading inside tilde fence", "~~~\n# Not A Title\n~~~\n# Real Title", "Real Title"},
 		{"only heading inside fence", "```\n# Only In Fence\n```", ""},
 		{"only first heading", "# First\n# Second", "First"},
+		{"tab after hash", "#\tTab Title", "Tab Title"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

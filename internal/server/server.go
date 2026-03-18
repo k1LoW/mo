@@ -56,8 +56,8 @@ func extractTitle(content string) string {
 		}
 		if strings.HasPrefix(trimmed, "#") {
 			after := strings.TrimLeft(trimmed, "#")
-			// ATX headings require a space after the # sequence (CommonMark spec).
-			if len(after) == 0 || after[0] != ' ' {
+			// ATX headings require a space or tab after the # sequence (CommonMark spec).
+			if len(after) == 0 || (after[0] != ' ' && after[0] != '\t') {
 				continue
 			}
 			title := strings.TrimSpace(after)
@@ -187,7 +187,7 @@ func readFileHead(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	var buf [8192]byte
+	var buf [headFileSizeLimit]byte
 	n, err := f.Read(buf[:])
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
@@ -945,11 +945,30 @@ func (s *State) scheduleFileChanged(absPath string) {
 }
 
 func (s *State) notifyFileChangedByPath(absPath string) {
-	ids := s.findIDsByPath(absPath)
+	// Extract the title outside the lock (file I/O should not hold the mutex).
+	newTitle, titleOK := extractTitleFromFile(absPath)
+
+	// Single lock pass: collect IDs and update titles together.
+	var ids []string
+	titleChanged := false
+	s.mu.Lock()
+	for _, g := range s.groups {
+		for _, entry := range g.Files {
+			if entry.Path == absPath {
+				ids = append(ids, entry.ID)
+				if titleOK && entry.Title != newTitle {
+					entry.Title = newTitle
+					titleChanged = true
+				}
+			}
+		}
+	}
+	s.mu.Unlock()
+
 	if len(ids) == 0 {
 		return
 	}
-	if s.UpdateTitleByPath(absPath) {
+	if titleChanged {
 		s.sendEvent(sseEvent{Name: eventUpdate, Data: "{}"})
 	}
 	s.notifyFileChanged(ids)
