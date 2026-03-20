@@ -192,12 +192,13 @@ func run(cmd *cobra.Command, args []string) error {
 	addr := net.JoinHostPort(bind, strconv.Itoa(port))
 
 	if clearBackup {
-		serverRunning := false
+		wasServerRunning := false
 		if _, err := probeServer(addr, probeTimeoutFast); err == nil {
-			serverRunning = true
+			wasServerRunning = true
 		}
+		hasBackup := backup.Exists(port)
 
-		if !serverRunning && !backup.Exists(port) {
+		if !wasServerRunning && !hasBackup {
 			fmt.Fprintf(os.Stderr, "mo: no saved session for port %d\n", port)
 			return nil
 		}
@@ -213,7 +214,7 @@ func run(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		if serverRunning {
+		if wasServerRunning {
 			// Shut down the running server, wait for it to stop,
 			// then restart with an empty state.
 			if err := doShutdown(addr); err != nil {
@@ -224,13 +225,13 @@ func run(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if backup.Exists(port) {
+		if hasBackup {
 			if err := backup.Remove(port); err != nil {
 				return err
 			}
 		}
 
-		if serverRunning {
+		if wasServerRunning {
 			// Restart the server with an empty state.
 			if _, err := spawnNewProcess(addr, ""); err != nil {
 				return err
