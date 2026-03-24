@@ -19,6 +19,7 @@ import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve"
 import { parseFrontmatter } from "../utils/frontmatter";
 import { stripMdxSyntax } from "../utils/mdx";
 import { isMarkdownFile, detectLanguage } from "../utils/filetype";
+import type { ZoomContent } from "./ZoomModal";
 import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
@@ -44,6 +45,7 @@ interface MarkdownViewerProps {
   onTocToggle: () => void;
   onRemoveFile: () => void;
   isWide: boolean;
+  onZoom?: (content: ZoomContent) => void;
 }
 
 function getMermaidTheme(): "dark" | "default" {
@@ -87,7 +89,13 @@ async function renderMermaid(code: string, width?: number): Promise<string> {
   return result;
 }
 
-export function MermaidBlock({ code }: { code: string }) {
+export function MermaidBlock({
+  code,
+  onZoom,
+}: {
+  code: string;
+  onZoom?: (content: ZoomContent) => void;
+}) {
   const [svg, setSvg] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -124,7 +132,11 @@ export function MermaidBlock({ code }: { code: string }) {
   if (svg) {
     return (
       <div ref={containerRef} className="relative group">
-        <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: svg }} />
+        <div
+          className={`overflow-x-auto${onZoom ? " cursor-zoom-in" : ""}`}
+          onClick={onZoom ? () => onZoom({ type: "svg", svg }) : undefined}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
         <MermaidImageCopyButton svg={svg} />
         <CodeBlockCopyButton code={code} themed />
       </div>
@@ -398,6 +410,7 @@ export function MarkdownViewer({
   onTocToggle,
   onRemoveFile,
   isWide,
+  onZoom,
 }: MarkdownViewerProps) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
@@ -452,7 +465,7 @@ export function MarkdownViewer({
         const isBlock = String(children).endsWith("\n");
         if (language) {
           if (language === "mermaid") {
-            return <MermaidBlock code={code} />;
+            return <MermaidBlock code={code} onZoom={onZoom} />;
           }
           return <CodeBlock language={language} code={code} />;
         }
@@ -466,7 +479,20 @@ export function MarkdownViewer({
         );
       },
       img: ({ src, alt, ...props }) => {
-        return <img src={resolveImageSrc(src, fileId)} alt={alt} {...props} />;
+        const resolvedSrc = resolveImageSrc(src, fileId);
+        return (
+          <img
+            src={resolvedSrc}
+            alt={alt}
+            {...props}
+            className={`${props.className ?? ""}${onZoom ? " cursor-zoom-in" : ""}`}
+            onClick={
+              onZoom && resolvedSrc
+                ? () => onZoom({ type: "image", src: resolvedSrc, alt: alt ?? undefined })
+                : undefined
+            }
+          />
+        );
       },
       a: ({ href, children, ...props }) => {
         const resolved = resolveLink(href, fileId);
@@ -504,7 +530,7 @@ export function MarkdownViewer({
         }
       },
     }),
-    [fileId, handleLinkClick],
+    [fileId, handleLinkClick, onZoom],
   );
 
   const isMarkdown = isMarkdownFile(fileName);

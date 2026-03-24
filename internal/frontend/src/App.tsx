@@ -9,6 +9,8 @@ import { SearchToggle } from "./components/SearchToggle";
 import { TitleToggle } from "./components/TitleToggle";
 import { RestartButton } from "./components/RestartButton";
 import { DropOverlay } from "./components/DropOverlay";
+import { ZoomModal } from "./components/ZoomModal";
+import type { ZoomContent } from "./components/ZoomModal";
 import { TocPanel } from "./components/TocPanel";
 import type { TocHeading } from "./components/TocPanel";
 import { useSSE } from "./hooks/useSSE";
@@ -77,6 +79,7 @@ export function App() {
     return null;
   });
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [zoomContent, setZoomContent] = useState<ZoomContent | null>(null);
 
   // Track previous values for render-time state adjustment
   const [prevGroups, setPrevGroups] = useState<Group[]>([]);
@@ -289,6 +292,14 @@ export function App() {
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  const handleZoom = useCallback((content: ZoomContent) => {
+    setZoomContent(content);
+  }, []);
+
+  const handleZoomClose = useCallback(() => {
+    setZoomContent(null);
+  }, []);
+
   return (
     <div className="flex flex-col h-full font-sans text-gh-text bg-gh-bg">
       <header className="h-12 shrink-0 flex items-center gap-3 px-4 bg-gh-header-bg text-gh-header-text border-b border-gh-header-border">
@@ -360,6 +371,7 @@ export function App() {
                 onTocToggle={() => setTocOpen((v) => !v)}
                 onRemoveFile={handleRemoveFile}
                 isWide={isWide}
+                onZoom={handleZoom}
               />
             ) : (
               <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">
@@ -378,6 +390,7 @@ export function App() {
       </div>
       <RestartButton />
       {isDragging && <DropOverlay />}
+      {zoomContent && <ZoomModal content={zoomContent} onClose={handleZoomClose} />}
     </div>
   );
 }
