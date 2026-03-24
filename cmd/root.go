@@ -480,10 +480,15 @@ func hasNonDirArgs(args []string) bool {
 	for _, arg := range args {
 		absPath, err := filepath.Abs(arg)
 		if err != nil {
-			return true
+			// Let resolveArgs surface the underlying error.
+			continue
 		}
 		info, err := os.Stat(absPath)
-		if err != nil || !info.IsDir() {
+		if err != nil {
+			// Path doesn't exist or can't be stat'd; let resolveArgs report it.
+			continue
+		}
+		if !info.IsDir() {
 			return true
 		}
 	}

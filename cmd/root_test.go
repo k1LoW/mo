@@ -104,10 +104,13 @@ func TestRun_Close(t *testing.T) {
 
 func TestRun_WatchWithArgs(t *testing.T) {
 	t.Run("with glob pattern", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), "test.md")
+		writeTestFile(t, f, []byte("# Test"))
+
 		watchPatterns = []string{"**/*.md"}
 		defer func() { watchPatterns = nil }()
 
-		err := run(rootCmd, []string{"README.md"})
+		err := run(rootCmd, []string{f})
 		if err == nil {
 			t.Fatal("run should return error when --watch and args are both specified")
 		}
@@ -118,15 +121,33 @@ func TestRun_WatchWithArgs(t *testing.T) {
 	})
 
 	t.Run("without glob chars hints shell expansion", func(t *testing.T) {
-		watchPatterns = []string{"README.md"}
+		f1 := filepath.Join(t.TempDir(), "a.md")
+		writeTestFile(t, f1, []byte("# A"))
+		f2 := filepath.Join(t.TempDir(), "b.md")
+		writeTestFile(t, f2, []byte("# B"))
+
+		watchPatterns = []string{f1}
 		defer func() { watchPatterns = nil }()
 
-		err := run(rootCmd, []string{"CHANGELOG.md"})
+		err := run(rootCmd, []string{f2})
 		if err == nil {
 			t.Fatal("run should return error when --watch and args are both specified")
 		}
 		if !strings.Contains(err.Error(), "shell may have expanded") {
 			t.Fatalf("error should hint shell expansion, got %q", err.Error())
+		}
+	})
+
+	t.Run("non-existent file with watch returns file not found", func(t *testing.T) {
+		watchPatterns = []string{"**/*.md"}
+		defer func() { watchPatterns = nil }()
+
+		err := run(rootCmd, []string{"nonexistent.md"})
+		if err == nil {
+			t.Fatal("run should return error for non-existent file")
+		}
+		if !strings.Contains(err.Error(), "file not found") {
+			t.Fatalf("got error %q, want file not found error", err.Error())
 		}
 	})
 }
