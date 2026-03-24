@@ -518,7 +518,10 @@ func resolveArgs(args []string, withWatch bool) (files []string, dirPatterns []s
 		}
 		stat, err := os.Stat(absPath)
 		if err != nil {
-			return nil, nil, fmt.Errorf("file not found: %s", absPath)
+			if errors.Is(err, os.ErrNotExist) {
+				return nil, nil, fmt.Errorf("file not found: %s", absPath)
+			}
+			return nil, nil, fmt.Errorf("cannot stat path %s: %w", absPath, err)
 		}
 		if stat.IsDir() {
 			if withWatch {
@@ -528,11 +531,19 @@ func resolveArgs(args []string, withWatch bool) (files []string, dirPatterns []s
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to glob directory %s: %w", absPath, err)
 				}
-				if len(matches) == 0 {
+				var fileMatches []string
+				for _, m := range matches {
+					info, err := os.Stat(m)
+					if err != nil || info.IsDir() {
+						continue
+					}
+					fileMatches = append(fileMatches, m)
+				}
+				if len(fileMatches) == 0 {
 					return nil, nil, fmt.Errorf("no .md files in %s", absPath)
 				}
-				sort.Strings(matches)
-				files = append(files, matches...)
+				sort.Strings(fileMatches)
+				files = append(files, fileMatches...)
 			}
 			continue
 		}
