@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.21.0](https://github.com/k1LoW/mo/compare/v0.20.2...v0.21.0) - 2026-03-24
+### Breaking Changes 🛠
+- feat: support directory arguments to open .md files inside by @k1LoW in https://github.com/k1LoW/mo/pull/137
+### New Features 🎉
+- feat: add fullscreen zoom modal for images and Mermaid diagrams by @harakeishi in https://github.com/k1LoW/mo/pull/135
+
 ## [v0.20.2](https://github.com/k1LoW/mo/compare/v0.20.1...v0.20.2) - 2026-03-22
 ### Other Changes
 - fix: prevent scroll chaining on content area by @orangekame3 in https://github.com/k1LoW/mo/pull/133
