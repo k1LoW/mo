@@ -25,6 +25,14 @@ import { isMarkdownFile } from "./utils/filetype";
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 const WIDTH_STORAGE_KEY = "mo-layout-width";
 const SHOW_TITLE_STORAGE_KEY = "mo-sidebar-show-title";
+export const TOC_OPEN_STORAGE_KEY = "mo-toc-open";
+
+export function getInitialTocOpen(): boolean {
+  const stored = localStorage.getItem(TOC_OPEN_STORAGE_KEY);
+  if (stored === "true") return true;
+  if (stored === "false") return false;
+  return false;
+}
 
 export function App() {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -33,7 +41,7 @@ export function App() {
   );
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [tocOpen, setTocOpen] = useState(false);
+  const [tocOpen, setTocOpen] = useState(getInitialTocOpen);
   const [headings, setHeadings] = useState<TocHeading[]>([]);
   const [contentRevision, setContentRevision] = useState(0);
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
@@ -229,6 +237,14 @@ export function App() {
       /* ignore */
     }
   }, [isWide]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TOC_OPEN_STORAGE_KEY, String(tocOpen));
+    } catch {
+      /* ignore */
+    }
+  }, [tocOpen]);
 
   const handleViewModeToggle = useCallback(() => {
     setViewModes((prev) => {
