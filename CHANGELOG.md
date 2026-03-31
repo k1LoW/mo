@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.23.2](https://github.com/k1LoW/mo/compare/v0.23.1...v0.23.2) - 2026-03-31
+### Fix bug 🐛
+- feat: add smooth scroll for footnote references by @k1LoW in https://github.com/k1LoW/mo/pull/156
+
 ## [v0.23.1](https://github.com/k1LoW/mo/compare/v0.23.0...v0.23.1) - 2026-03-28
 ### Other Changes
 - fix: open sidebar when search is activated by @k1LoW in https://github.com/k1LoW/mo/pull/152
