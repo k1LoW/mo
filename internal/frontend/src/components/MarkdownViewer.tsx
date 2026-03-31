@@ -25,7 +25,7 @@ import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
 
-// Strip the `user-content-` prefix that remark-gfm bakes into footnote IDs/hrefs,
+// Strip the `user-content-` prefix that remark-gfm bakes into footnote IDs,
 // so rehype-sanitize can re-add it exactly once (avoiding double-prefixed IDs).
 function rehypeStripClobberPrefix() {
   const PREFIX = "user-content-";
