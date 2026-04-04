@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.23.4](https://github.com/k1LoW/mo/compare/v0.23.3...v0.23.4) - 2026-04-04
+### New Features 🎉
+- feat: use distinct icons for Close file and Discard actions by @k1LoW in https://github.com/k1LoW/mo/pull/161
+
 ## [v0.23.3](https://github.com/k1LoW/mo/compare/v0.23.2...v0.23.3) - 2026-04-03
 ### Dependency Updates ⬆️
 - chore(deps): bump actions/setup-go from 6.3.0 to 6.4.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/157
