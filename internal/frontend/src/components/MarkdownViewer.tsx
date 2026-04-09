@@ -606,7 +606,7 @@ export function MarkdownViewer({
         );
       },
       img: ({ src, alt, ...props }) => {
-        const resolvedSrc = resolveImageSrc(src, fileId);
+        const resolvedSrc = resolveImageSrc(src, activeGroup, fileId);
         if (onZoom && resolvedSrc) {
           return (
             <span className="relative inline-block group/img">
@@ -619,10 +619,10 @@ export function MarkdownViewer({
             </span>
           );
         }
-        return <img src={resolveImageSrc(src, fileId)} alt={alt} {...props} />;
+        return <img src={resolveImageSrc(src, activeGroup, fileId)} alt={alt} {...props} />;
       },
       a: ({ href, children, ...props }) => {
-        const resolved = resolveLink(href, fileId);
+        const resolved = resolveLink(href, activeGroup, fileId);
         switch (resolved.type) {
           case "external":
             return (

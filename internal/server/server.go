@@ -362,11 +362,11 @@ func (s *State) Groups() []Group {
 	return result
 }
 
-func (s *State) FindFile(id string) *FileEntry {
+func (s *State) FindFile(id, groupName string) *FileEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for _, g := range s.groups {
+	if g, ok := s.groups[groupName]; ok {
 		for _, f := range g.Files {
 			if f.ID == id {
 				return f
@@ -374,34 +374,6 @@ func (s *State) FindFile(id string) *FileEntry {
 		}
 	}
 	return nil
-}
-
-// FindGroupForFile returns the group name for a given file ID.
-// When groupName is provided, it verifies the file exists in that group.
-// When empty, it scans all groups (for internal callers without group context).
-func (s *State) FindGroupForFile(id, groupName string) string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if groupName != "" {
-		if g, ok := s.groups[groupName]; ok {
-			for _, f := range g.Files {
-				if f.ID == id {
-					return g.Name
-				}
-			}
-		}
-		return ""
-	}
-
-	for _, g := range s.groups {
-		for _, f := range g.Files {
-			if f.ID == id {
-				return g.Name
-			}
-		}
-	}
-	return ""
 }
 
 func (s *State) ReorderFiles(groupName string, fileIDs []string) bool {
@@ -1442,13 +1414,18 @@ func handleGroups(state *State) http.HandlerFunc {
 
 func handleFileContent(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		group, err := resolveGroupFromPath(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		id := r.PathValue("id")
 		if id == "" {
 			http.Error(w, "missing file id", http.StatusBadRequest)
 			return
 		}
 
-		entry := state.FindFile(id)
+		entry := state.FindFile(id, group)
 		if entry == nil {
 			http.Error(w, "file not found", http.StatusNotFound)
 			return
@@ -1682,13 +1659,18 @@ func extractHeadingLine(line string) string {
 
 func handleFileRaw(state *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		group, err := resolveGroupFromPath(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		id := r.PathValue("id")
 		if id == "" {
 			http.Error(w, "missing file id", http.StatusBadRequest)
 			return
 		}
 
-		entry := state.FindFile(id)
+		entry := state.FindFile(id, group)
 		if entry == nil {
 			http.Error(w, "file not found", http.StatusNotFound)
 			return
@@ -1728,9 +1710,9 @@ func handleOpenFile(state *State) http.HandlerFunc {
 			return
 		}
 
-		entry := state.FindFile(req.FileID)
+		entry := state.FindFile(req.FileID, groupName)
 		if entry == nil {
-			http.Error(w, "source file not found", http.StatusNotFound)
+			http.Error(w, "source file not found in group", http.StatusNotFound)
 			return
 		}
 
@@ -1749,11 +1731,6 @@ func handleOpenFile(state *State) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			}
 			return
-		}
-
-		groupName = state.FindGroupForFile(req.FileID, groupName)
-		if groupName == "" {
-			groupName = DefaultGroup
 		}
 
 		newEntry, err := state.AddFile(absPath, groupName)

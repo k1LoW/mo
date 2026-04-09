@@ -5,7 +5,15 @@ export type LinkResolution =
   | { type: "file"; rawUrl: string }
   | { type: "passthrough" };
 
-export function resolveLink(href: string | undefined, fileId: string): LinkResolution {
+function rawBasePath(group: string, fileId: string): string {
+  return `/_/api/groups/${encodeURIComponent(group)}/files/${fileId}/raw`;
+}
+
+export function resolveLink(
+  href: string | undefined,
+  group: string,
+  fileId: string,
+): LinkResolution {
   if (!href || href.startsWith("http://") || href.startsWith("https://")) {
     return { type: "external" };
   }
@@ -18,14 +26,18 @@ export function resolveLink(href: string | undefined, fileId: string): LinkResol
   }
   const basename = hrefPath.split("/").pop() || "";
   if (basename.includes(".")) {
-    return { type: "file", rawUrl: `/_/api/files/${fileId}/raw/${href}` };
+    return { type: "file", rawUrl: `${rawBasePath(group, fileId)}/${href}` };
   }
   return { type: "passthrough" };
 }
 
-export function resolveImageSrc(src: string | undefined, fileId: string): string | undefined {
+export function resolveImageSrc(
+  src: string | undefined,
+  group: string,
+  fileId: string,
+): string | undefined {
   if (src && !src.startsWith("http://") && !src.startsWith("https://")) {
-    return `/_/api/files/${fileId}/raw/${src}`;
+    return `${rawBasePath(group, fileId)}/${src}`;
   }
   return src;
 }
