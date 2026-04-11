@@ -1,5 +1,10 @@
 # Changelog
 
+## [v1.1.1](https://github.com/k1LoW/mo/compare/v1.1.0...v1.1.1) - 2026-04-10
+### Dependency Updates ⬆️
+- chore(deps): bump Songmu/tagpr from 1.17.1 to 1.18.1 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/168
+- chore(deps): bump the dependencies group in /internal/frontend with 11 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/169
+
 ## [v1.1.0](https://github.com/k1LoW/mo/compare/v1.0.0...v1.1.0) - 2026-04-09
 ### Breaking Changes 🛠
 - refactor: nest file API endpoints under groups path by @k1LoW in https://github.com/k1LoW/mo/pull/167
