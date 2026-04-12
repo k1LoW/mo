@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { MarkdownViewer } from "./components/MarkdownViewer";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { FontSizeToggle, type FontSize } from "./components/FontSizeToggle";
 import { WidthToggle } from "./components/WidthToggle";
 import { GroupDropdown } from "./components/GroupDropdown";
 import { ViewModeToggle, type ViewMode } from "./components/ViewModeToggle";
@@ -25,7 +26,20 @@ import { isMarkdownFile } from "./utils/filetype";
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 const WIDTH_STORAGE_KEY = "mo-layout-width";
 const SHOW_TITLE_STORAGE_KEY = "mo-sidebar-show-title";
+export const FONT_SIZE_STORAGE_KEY = "mo-font-size";
 export const TOC_OPEN_STORAGE_KEY = "mo-toc-open";
+
+export function getInitialFontSize(): FontSize {
+  try {
+    const stored = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    if (stored === "small" || stored === "medium" || stored === "large" || stored === "xlarge") {
+      return stored;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "medium";
+}
 
 export function getInitialTocOpenMap(): Record<string, boolean> {
   try {
@@ -98,6 +112,7 @@ export function App() {
       return false;
     }
   });
+  const [fontSize, setFontSize] = useState<FontSize>(getInitialFontSize);
   const knownFileIds = useRef<Set<string>>(new Set());
   const [initialFileId, setInitialFileId] = useState<string | null>(() => {
     const fromUrl = parseFileIdFromSearch(window.location.search);
@@ -308,6 +323,14 @@ export function App() {
     }
   }, [isWide]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(FONT_SIZE_STORAGE_KEY, fontSize);
+    } catch {
+      /* ignore */
+    }
+  }, [fontSize]);
+
   const handleViewModeToggle = useCallback(() => {
     setViewModes((prev) => {
       const current = prev[activeGroup] ?? "flat";
@@ -425,6 +448,7 @@ export function App() {
         <TitleToggle showTitle={currentShowTitle} onToggle={handleTitleToggle} />
         <SearchToggle isOpen={searchQuery != null} onToggle={handleSearchToggle} />
         <div className="ml-auto flex items-center gap-2">
+          <FontSizeToggle fontSize={fontSize} onChange={setFontSize} />
           <WidthToggle isWide={isWide} onToggle={() => setIsWide((v) => !v)} />
           <ThemeToggle />
         </div>
@@ -465,6 +489,7 @@ export function App() {
                 onRemoveFile={handleRemoveFile}
                 uploaded={activeFile?.uploaded}
                 isWide={isWide}
+                fontSize={fontSize}
                 onZoom={handleZoom}
                 scrollToHeading={pendingSearchHeading}
                 onScrolledToHeading={() => setPendingSearchHeading(null)}

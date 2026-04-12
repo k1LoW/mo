@@ -37,10 +37,24 @@ body,
 .markdown-body {
   max-width: 980px;
   margin: 0 auto;
+  font-size: 16px;
+  line-height: 1.7;
 }
 
 .markdown-body.markdown-body--wide {
   max-width: none;
+}
+
+.markdown-body.markdown-body--small {
+  font-size: 14px;
+}
+
+.markdown-body.markdown-body--large {
+  font-size: 18px;
+}
+
+.markdown-body.markdown-body--xlarge {
+  font-size: 20px;
 }
 
 /* Undo Tailwind preflight's display:block on img inside markdown

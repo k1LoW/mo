@@ -1,5 +1,31 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { formatTitle, getInitialTocOpenMap, isTocOpenForFile, TOC_OPEN_STORAGE_KEY } from "./App";
+import {
+  FONT_SIZE_STORAGE_KEY,
+  formatTitle,
+  getInitialFontSize,
+  getInitialTocOpenMap,
+  isTocOpenForFile,
+  TOC_OPEN_STORAGE_KEY,
+} from "./App";
+
+describe("getInitialFontSize", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it("returns medium when localStorage is empty", () => {
+    expect(getInitialFontSize()).toBe("medium");
+  });
+
+  it("returns stored size", () => {
+    localStorage.setItem(FONT_SIZE_STORAGE_KEY, "xlarge");
+    expect(getInitialFontSize()).toBe("xlarge");
+  });
+
+  it("returns medium for invalid value", () => {
+    localStorage.setItem(FONT_SIZE_STORAGE_KEY, "huge");
+    expect(getInitialFontSize()).toBe("medium");
+  });
+});
 
 describe("getInitialTocOpenMap", () => {
   beforeEach(() => localStorage.clear());

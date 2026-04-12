@@ -26,6 +26,7 @@
 - <img src="images/icons/search.svg" width="16" height="16" alt="search"> Full-text search across file names and content
 - YAML frontmatter display (collapsible metadata block)
 - MDX file support (renders as Markdown, strips `import`/`export`, escapes JSX tags)
+- Content font size toggle (small / medium / large / extra large)
 - <img src="images/icons/width-expand.svg" width="16" height="16" alt="wide view"> Wide / <img src="images/icons/width-compress.svg" width="16" height="16" alt="narrow view"> narrow content width toggle
 - <img src="images/icons/raw.svg" width="16" height="16" alt="raw"> Raw markdown view
 - <img src="images/icons/copy.svg" width="16" height="16" alt="copy"> Copy content (Markdown / Text / HTML)

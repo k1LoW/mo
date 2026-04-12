@@ -24,6 +24,7 @@ import type { ZoomContent } from "./ZoomModal";
 import type { TocHeading } from "./TocPanel";
 import type { Components } from "react-markdown";
 import "github-markdown-css/github-markdown.css";
+import type { FontSize } from "./FontSizeToggle";
 
 // Strip the `user-content-` prefix that remark-gfm bakes into footnote IDs,
 // so rehype-sanitize can re-add it exactly once (avoiding double-prefixed IDs).
@@ -73,6 +74,7 @@ interface MarkdownViewerProps {
   onRemoveFile: () => void;
   uploaded?: boolean;
   isWide: boolean;
+  fontSize: FontSize;
   onZoom?: (content: ZoomContent) => void;
   scrollToHeading?: string | null;
   onScrolledToHeading?: () => void;
@@ -533,6 +535,7 @@ export function MarkdownViewer({
   onRemoveFile,
   uploaded,
   isWide,
+  fontSize,
   onZoom,
   scrollToHeading,
   onScrolledToHeading,
@@ -802,7 +805,7 @@ export function MarkdownViewer({
     <div className="flex items-start gap-2">
       <article
         ref={articleRef}
-        className={`markdown-body relative min-w-0 flex-1 overflow-visible${isWide ? " markdown-body--wide" : ""}`}
+        className={`markdown-body relative min-w-0 flex-1 overflow-visible${isWide ? " markdown-body--wide" : ""}${fontSize !== "medium" ? ` markdown-body--${fontSize}` : ""}`}
       >
         <div className="pointer-events-none absolute inset-0 z-10 overflow-visible">
           {searchHitMarkers.map((marker, index) => (
