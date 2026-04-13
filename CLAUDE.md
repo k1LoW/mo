@@ -75,7 +75,8 @@ cd internal/frontend && pnpm run dev
 
 **Go backend + embedded React SPA**, single binary.
 
-- `cmd/root.go` — CLI entry point (Cobra). Handles single-instance detection: if a server is already running on the port, adds files via HTTP API instead of starting a new server. Supports directory arguments: directories are expanded to `*.md` files (or converted to watch patterns with `--watch`).
+- `cmd/root.go` — CLI entry point (Cobra). Handles single-instance detection: if a server is already running on the port, adds files via HTTP API instead of starting a new server. Supports directory arguments: directories are expanded to `*.md` files (or converted to watch patterns with `--watch`). Supports stdin pipe input.
+- `cmd/stdin.go` — Stdin pipe detection (`os.Stdin.Stat()` with `ModeCharDevice`), content reading, deterministic name generation (`stdin-<hash>.md`), and upload to running server.
 - `internal/server/server.go` — HTTP server, state management (mutex-guarded), SSE for live-reload, file watcher (fsnotify). All API routes use `/_/` prefix to avoid collision with SPA route paths (group names).
 - `internal/static/static.go` — `go:generate` runs the frontend build, then `go:embed` embeds the output from `internal/static/dist/`.
 - `internal/frontend/` — Vite + React 19 + TypeScript + Tailwind CSS v4 SPA. Build output goes to `internal/static/dist/` (configured in `vite.config.ts`).
@@ -107,6 +108,7 @@ cd internal/frontend && pnpm run dev
 - **Toolbar buttons in content area**: The toolbar column (ToC + Raw toggles) lives inside `MarkdownViewer.tsx`, positioned with `shrink-0 flex flex-col gap-2 -mr-4 -mt-4` to align with the header.
 - **State persistence**: Server state (files, groups, patterns) is backed up to `$XDG_STATE_HOME/mo/backup/mo-<port>.json` via `internal/backup`. On `--restart`, the server reloads this state to preserve the session. When starting a new server, backup is always restored and merged with CLI-specified files/patterns (restored entries first, CLI entries appended, duplicates skipped). The backup file is preserved across clean `--shutdown` and is only removed via the `--clear` path in the CLI.
 - **Directory arguments**: When a directory is passed as a CLI argument, `resolveArgs()` expands `dir/*.md` (non-watch mode) or converts to a `dir/*.md` watch pattern (with `--watch`). The `hasNonDirArgs()` helper ensures the `--watch` + file args mutual exclusion check only applies to actual file arguments, not directories.
+- **Stdin pipe**: When no file arguments are given and stdin is a pipe (not a terminal), content is read from stdin and treated as an uploaded file. Name is `stdin-<first 7 hex of SHA-256>.md` (deterministic, consistent with upload dedup). If a server is already running, content is POSTed to the upload API; otherwise it is passed as `UploadedFileData` to the new server. File arguments take priority over stdin (stdin is ignored when args are present).
 - **Glob pattern watching**: `--watch` registers glob patterns that are expanded to matching files and monitored for new files via fsnotify directory watches. Patterns are stored with reference-counted directory watches (`watchedDirs map[string]int`). `--unwatch` removes patterns and decrements watch ref counts. Groups persist as long as they have files or patterns.
 - **localStorage conventions**: All keys use `mo-` prefix (e.g., `mo-sidebar-width`, `mo-sidebar-viewmode`, `mo-sidebar-tree-collapsed`, `mo-theme`). Read patterns use `try/catch` around `JSON.parse` with fallback defaults.
 
