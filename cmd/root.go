@@ -346,7 +346,10 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Detect stdin pipe when no file arguments are given.
 	var stdinData *server.UploadedFileData
-	if len(args) == 0 && isStdinPipe() {
+	if isStdinPipe() {
+		if len(args) > 0 {
+			return fmt.Errorf("cannot use stdin pipe with file arguments")
+		}
 		if len(watchPatterns) > 0 {
 			return fmt.Errorf("cannot use --watch (-w) with stdin pipe")
 		}
