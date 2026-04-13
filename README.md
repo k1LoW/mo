@@ -61,7 +61,7 @@ $ cat notes.md | mo                     # Read Markdown from stdin
 
 ### Reading from stdin
 
-When no file arguments are given and stdin is redirected (not a terminal), `mo` reads Markdown content from stdin.
+When no positional arguments are given and stdin is redirected (not a terminal), `mo` reads Markdown content from stdin.
 
 ``` console
 $ cat notes.md | mo
