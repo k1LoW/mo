@@ -1939,10 +1939,10 @@ func TestHandleOpenFile_PercentEncodedNonASCII(t *testing.T) {
 	srcFile := filepath.Join(tmpDir, "index.md")
 	targetFile := filepath.Join(tmpDir, "日本語ファイル.md")
 
-	if err := os.WriteFile(srcFile, []byte("# Index"), 0o644); err != nil {
+	if err := os.WriteFile(srcFile, []byte("# Index"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(targetFile, []byte("# Japanese"), 0o644); err != nil {
+	if err := os.WriteFile(targetFile, []byte("# Japanese"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1989,10 +1989,10 @@ func TestHandleFileRaw_PercentEncodedNonASCII(t *testing.T) {
 	mdFile := filepath.Join(tmpDir, "index.md")
 	assetFile := filepath.Join(tmpDir, "画像.txt")
 
-	if err := os.WriteFile(mdFile, []byte("# Index"), 0o644); err != nil {
+	if err := os.WriteFile(mdFile, []byte("# Index"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(assetFile, []byte("asset content"), 0o644); err != nil {
+	if err := os.WriteFile(assetFile, []byte("asset content"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
