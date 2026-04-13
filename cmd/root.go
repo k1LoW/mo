@@ -344,7 +344,7 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Detect redirected stdin when no file arguments are given.
+	// Detect redirected stdin when no positional arguments are given.
 	var stdinData *server.UploadedFileData
 	if isStdinRedirected() {
 		if len(args) > 0 {
