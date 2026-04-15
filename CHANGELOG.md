@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.3.0](https://github.com/k1LoW/mo/compare/v1.2.0...v1.3.0) - 2026-04-15
+### New Features 🎉
+- feat: fix the position of file menu by @kyu08 in https://github.com/k1LoW/mo/pull/176
+
 ## [v1.2.0](https://github.com/k1LoW/mo/compare/v1.1.1...v1.2.0) - 2026-04-13
 ### New Features 🎉
 - feat: support reading Markdown from stdin pipe by @k1LoW in https://github.com/k1LoW/mo/pull/174
