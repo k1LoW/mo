@@ -1,5 +1,10 @@
 # Changelog
 
+## [v1.3.1](https://github.com/k1LoW/mo/compare/v1.3.0...v1.3.1) - 2026-04-16
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/180
+- chore(deps-dev): bump the dependencies group in /internal/frontend with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/181
+
 ## [v1.3.0](https://github.com/k1LoW/mo/compare/v1.2.0...v1.3.0) - 2026-04-15
 ### New Features 🎉
 - feat: fix the position of file menu by @kyu08 in https://github.com/k1LoW/mo/pull/176
