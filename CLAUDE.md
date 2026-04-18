@@ -60,8 +60,9 @@ cd internal/frontend && pnpm run dev
 - `--target` / `-t` — Tab group name (default: `"default"`)
 - `--open` — Always open browser
 - `--no-open` — Never open browser
-- `--watch` / `-w` — Glob pattern to watch for matching files (repeatable)
+- `--watch` / `-w` — Boolean flag that turns on watch mode; directory and glob positional arguments are registered as watch patterns
 - `--unwatch` — Remove a watched glob pattern (repeatable)
+- `--recursive` / `-R` — Recurse into subdirectories when a directory is given as an argument (expands `*.md` → `**/*.md`)
 - `--close` — Close files instead of opening them
 - `--clear` — Clear saved session for the specified port
 - `--status` — Show status of all running mo servers
@@ -107,9 +108,9 @@ cd internal/frontend && pnpm run dev
 - **Resizable panels**: Both `Sidebar.tsx` (left) and `TocPanel.tsx` (right) use the same drag-to-resize pattern with localStorage persistence. Left sidebar uses `e.clientX`, right panel uses `window.innerWidth - e.clientX`.
 - **Toolbar buttons in content area**: The toolbar column (ToC + Raw toggles) lives inside `MarkdownViewer.tsx`, positioned with `shrink-0 flex flex-col gap-2 -mr-4 -mt-4` to align with the header.
 - **State persistence**: Server state (files, groups, patterns) is backed up to `$XDG_STATE_HOME/mo/backup/mo-<port>.json` via `internal/backup`. On `--restart`, the server reloads this state to preserve the session. When starting a new server, backup is always restored and merged with CLI-specified files/patterns (restored entries first, CLI entries appended, duplicates skipped). The backup file is preserved across clean `--shutdown` and is only removed via the `--clear` path in the CLI.
-- **Directory arguments**: When a directory is passed as a CLI argument, `resolveArgs()` expands `dir/*.md` (non-watch mode) or converts to a `dir/*.md` watch pattern (with `--watch`). The `hasNonDirArgs()` helper ensures the `--watch` + file args mutual exclusion check only applies to actual file arguments, not directories.
+- **Positional arguments**: `resolveArgs(args, watchMode, recursive)` classifies each positional arg as a glob (via `hasGlobChars`), directory, or file. With `--watch`, globs and directories become watch patterns (`dir/*.md` or `dir/**/*.md` when `-R`). Without `--watch`, they are expanded once via `doublestar.Glob` / `filepath.Glob` and treated as files. Plain files are added directly. `--watch` alone without a glob/dir positional errors out (with a shell-expansion hint if only files were given).
 - **Stdin pipe**: When no file arguments are given and stdin is a pipe (not a terminal), content is read from stdin and treated as an uploaded file. Name is `stdin-<first 7 hex of SHA-256>.md` (deterministic, consistent with upload dedup). If a server is already running, content is POSTed to the upload API; otherwise it is passed as `UploadedFileData` to the new server. Combining stdin with file arguments or `--watch` returns an error. Max stdin size is 10MB (same as server upload limit).
-- **Glob pattern watching**: `--watch` registers glob patterns that are expanded to matching files and monitored for new files via fsnotify directory watches. Patterns are stored with reference-counted directory watches (`watchedDirs map[string]int`). `--unwatch` removes patterns and decrements watch ref counts. Groups persist as long as they have files or patterns.
+- **Glob pattern watching**: `--watch` turns on watch mode; directory and glob positional arguments are registered as patterns, then expanded to matching files and monitored for new files via fsnotify directory watches. Patterns are stored with reference-counted directory watches (`watchedDirs map[string]int`). `--unwatch` still takes a pattern value (repeatable) and removes patterns, decrementing watch ref counts. Groups persist as long as they have files or patterns.
 - **localStorage conventions**: All keys use `mo-` prefix (e.g., `mo-sidebar-width`, `mo-sidebar-viewmode`, `mo-sidebar-tree-collapsed`, `mo-theme`). Read patterns use `try/catch` around `JSON.parse` with fallback defaults.
 
 ## API Conventions

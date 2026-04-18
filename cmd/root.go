@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/k1LoW/errors"
 
 	"github.com/k1LoW/donegroup"
@@ -39,6 +40,9 @@ const (
 	probeTimeoutFast = 500 * time.Millisecond
 	// probeTimeoutDefault is used when the server is expected to be running.
 	probeTimeoutDefault = 2 * time.Second
+
+	markdownGlob          = "*.md"
+	markdownGlobRecursive = "**/*.md"
 )
 
 var (
@@ -52,8 +56,9 @@ var (
 	restartServer                bool
 	foreground                   bool
 	statusServer                 bool
-	watchPatterns                []string
+	watchMode                    bool
 	unwatchPatterns              []string
+	recursive                    bool
 	closeFiles                   bool
 	clearBackup                  bool
 	jsonOutput                   bool
@@ -136,15 +141,24 @@ Supported Markdown Features:
   - MDX files (rendered as Markdown with import/export stripped and JSX tags escaped)
   - Raw HTML
 
-Glob Patterns:
-  Use --watch (-w) to specify glob patterns. Matching directories are
-  watched and new files are automatically added.
-  Cannot be combined with file arguments.
+Watch mode and glob patterns:
+  --watch (-w) turns on watch mode. Directory and glob positional
+  arguments are then registered as watch patterns; matching files are
+  opened and new files are picked up automatically. Combine with
+  --recursive (-R) to descend into subdirectories.
 
   $ mo -w '**/*.md'                   Watch all .md files recursively
   $ mo -w 'docs/**/*.md' -t docs      Watch docs/ tree in "docs" group
-  $ mo -w '*.md' -w 'docs/**/*.md'    Watch multiple patterns
+  $ mo -w '*.md' 'docs/**/*.md'       Multiple patterns (positional)
+  $ mo -w docs/                       Watch docs/*.md
+  $ mo -w -R docs/                    Watch docs/**/*.md
+  $ mo -wR docs/                      Same (short-combined form)
   $ mo --unwatch '**/*.md'            Stop watching a pattern
+
+  Without --watch, globs are expanded once and a directory argument
+  opens the matching files without live-watching new additions.
+
+  $ mo -R docs/                       Open every .md under docs/ once
 
 WARNING: --bind with a non-loopback address:
   Binding to a non-localhost address (e.g. 0.0.0.0) exposes mo to the
@@ -176,8 +190,9 @@ func init() {
 	rootCmd.Flags().MarkHidden("restore") //nolint:errcheck
 	rootCmd.Flags().BoolVar(&foreground, "foreground", false, "Run mo server in foreground (do not background)")
 	rootCmd.Flags().BoolVar(&statusServer, "status", false, "Show status of all running mo servers")
-	rootCmd.Flags().StringArrayVarP(&watchPatterns, "watch", "w", nil, "Glob pattern to watch for matching files (repeatable)")
+	rootCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Treat directory and glob arguments as watch patterns")
 	rootCmd.Flags().StringArrayVar(&unwatchPatterns, "unwatch", nil, "Remove a watched glob pattern (repeatable)")
+	rootCmd.Flags().BoolVarP(&recursive, "recursive", "R", false, "Recurse into subdirectories when a directory is given")
 	rootCmd.Flags().BoolVar(&closeFiles, "close", false, "Close files instead of opening them")
 	rootCmd.Flags().BoolVar(&clearBackup, "clear", false, "Clear saved session for the specified port")
 	rootCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output structured data as JSON to stdout")
@@ -262,7 +277,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(unwatchPatterns) > 0 {
-		if len(watchPatterns) > 0 {
+		if watchMode {
 			return fmt.Errorf("cannot use --unwatch with --watch")
 		}
 		if len(args) > 0 {
@@ -283,7 +298,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	if closeFiles {
-		if len(watchPatterns) > 0 {
+		if watchMode {
 			return fmt.Errorf("cannot use --close with --watch")
 		}
 		if len(args) == 0 {
@@ -320,28 +335,20 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	target = resolved
 
-	// Check --watch + file args mutual exclusion before resolving args.
-	// Directory args are allowed with --watch (they become patterns).
-	if len(watchPatterns) > 0 && len(args) > 0 {
-		if hasNonDirArgs(args) {
-			hasGlob := slices.ContainsFunc(watchPatterns, func(p string) bool {
-				return hasGlobChars(p)
-			})
-			if !hasGlob {
-				return fmt.Errorf("cannot use --watch (-w) with file arguments\n(hint: the shell may have expanded the glob pattern; quote it to prevent expansion, e.g. -w '**/*.md')")
-			}
-			return fmt.Errorf("cannot use --watch (-w) with file arguments")
+	if recursive && len(args) == 0 {
+		return fmt.Errorf("--recursive (-R) requires a directory argument")
+	}
+
+	files, patterns, err := resolveArgs(args, watchMode, recursive)
+	if err != nil {
+		return err
+	}
+
+	if watchMode && len(patterns) == 0 {
+		if len(files) > 0 {
+			return fmt.Errorf("--watch (-w) requires a glob pattern or directory argument\n(hint: the shell may have expanded the glob pattern; quote it, e.g. -w '**/*.md')")
 		}
-	}
-
-	files, dirPatterns, err := resolveArgs(args, len(watchPatterns) > 0)
-	if err != nil {
-		return err
-	}
-
-	patterns, err := resolvePatterns(slices.Concat(watchPatterns, dirPatterns))
-	if err != nil {
-		return err
+		return fmt.Errorf("--watch (-w) requires a glob pattern or directory argument")
 	}
 
 	// Detect redirected stdin when no positional arguments are given.
@@ -350,7 +357,7 @@ func run(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
 			return fmt.Errorf("cannot use redirected stdin with positional arguments")
 		}
-		if len(watchPatterns) > 0 {
+		if watchMode {
 			return fmt.Errorf("cannot use --watch (-w) with redirected stdin")
 		}
 		name, content, err := readStdin(os.Stdin)
@@ -546,25 +553,6 @@ func hasGlobChars(s string) bool {
 	return strings.ContainsAny(s, "*?[")
 }
 
-func hasNonDirArgs(args []string) bool {
-	for _, arg := range args {
-		absPath, err := filepath.Abs(arg)
-		if err != nil {
-			// Let resolveArgs surface the underlying error.
-			continue
-		}
-		info, err := os.Stat(absPath)
-		if err != nil {
-			// Path doesn't exist or can't be stat'd; let resolveArgs report it.
-			continue
-		}
-		if !info.IsDir() {
-			return true
-		}
-	}
-	return false
-}
-
 func resolvePatterns(patterns []string) ([]string, error) {
 	var resolved []string
 	for _, pat := range patterns {
@@ -580,46 +568,76 @@ func resolvePatterns(patterns []string) ([]string, error) {
 	return resolved, nil
 }
 
-func resolveArgs(args []string, withWatch bool) (files []string, dirPatterns []string, err error) {
+func resolveArgs(args []string, watchMode, recursive bool) (files, patterns []string, err error) {
 	for _, arg := range args {
-		absPath, err := filepath.Abs(arg)
+		abs, err := filepath.Abs(arg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("cannot resolve path %s: %w", arg, err)
 		}
-		stat, err := os.Stat(absPath)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return nil, nil, fmt.Errorf("file not found: %s", absPath)
+
+		if hasGlobChars(arg) {
+			if watchMode {
+				patterns = append(patterns, abs)
+				continue
 			}
-			return nil, nil, fmt.Errorf("cannot stat path %s: %w", absPath, err)
-		}
-		if stat.IsDir() {
-			if withWatch {
-				dirPatterns = append(dirPatterns, filepath.Join(absPath, "*.md"))
-			} else {
-				matches, err := filepath.Glob(filepath.Join(absPath, "*.md"))
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to glob directory %s: %w", absPath, err)
-				}
-				var fileMatches []string
-				for _, m := range matches {
-					info, err := os.Stat(m)
-					if err != nil || info.IsDir() {
-						continue
-					}
-					fileMatches = append(fileMatches, m)
-				}
-				if len(fileMatches) == 0 {
-					return nil, nil, fmt.Errorf("no .md files in %s", absPath)
-				}
-				sort.Strings(fileMatches)
-				files = append(files, fileMatches...)
+			matches, err := expandGlobPattern(abs)
+			if err != nil {
+				return nil, nil, err
 			}
+			if len(matches) == 0 {
+				return nil, nil, fmt.Errorf("no files matched %s", arg)
+			}
+			files = append(files, matches...)
 			continue
 		}
-		files = append(files, absPath)
+
+		stat, err := os.Stat(abs)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil, nil, fmt.Errorf("file not found: %s", abs)
+			}
+			return nil, nil, fmt.Errorf("cannot stat path %s: %w", abs, err)
+		}
+		if stat.IsDir() {
+			pat := filepath.Join(abs, markdownGlobFor(recursive))
+			if watchMode {
+				patterns = append(patterns, pat)
+				continue
+			}
+			matches, err := expandGlobPattern(pat)
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(matches) == 0 {
+				return nil, nil, fmt.Errorf("no .md files in %s", abs)
+			}
+			files = append(files, matches...)
+			continue
+		}
+		files = append(files, abs)
 	}
-	return files, dirPatterns, nil
+	return files, patterns, nil
+}
+
+func markdownGlobFor(recursive bool) string {
+	if recursive {
+		return markdownGlobRecursive
+	}
+	return markdownGlob
+}
+
+func expandGlobPattern(absPattern string) ([]string, error) {
+	base, rel := doublestar.SplitPattern(filepath.ToSlash(absPattern))
+	rels, err := doublestar.Glob(os.DirFS(base), rel, doublestar.WithFilesOnly())
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand glob %s: %w", absPattern, err)
+	}
+	matches := make([]string, len(rels))
+	for i, r := range rels {
+		matches[i] = filepath.Join(base, r)
+	}
+	sort.Strings(matches)
+	return matches, nil
 }
 
 func postFiles(client *http.Client, addr, group string, files []string) []deeplinkEntry {
