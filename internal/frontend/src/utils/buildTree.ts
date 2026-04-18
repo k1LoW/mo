@@ -123,12 +123,17 @@ function collapseSingleChild(node: TreeNode): void {
   }
 }
 
+const naturalCompare = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+}).compare;
+
 function sortTree(node: TreeNode): void {
   node.children.sort((a, b) => {
     const aIsDir = a.file == null;
     const bIsDir = b.file == null;
     if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-    return a.name.localeCompare(b.name);
+    return naturalCompare(a.name, b.name);
   });
   for (const child of node.children) {
     sortTree(child);
