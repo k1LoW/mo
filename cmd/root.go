@@ -32,6 +32,8 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 )
 
 const (
@@ -612,7 +614,7 @@ func resolveArgs(args []string, withWatch bool) (files []string, dirPatterns []s
 				if len(fileMatches) == 0 {
 					return nil, nil, fmt.Errorf("no .md files in %s", absPath)
 				}
-				sort.Strings(fileMatches)
+				collate.New(language.Und, collate.Numeric).SortStrings(fileMatches)
 				files = append(files, fileMatches...)
 			}
 			continue

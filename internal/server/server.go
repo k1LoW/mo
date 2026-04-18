@@ -25,6 +25,8 @@ import (
 	"github.com/k1LoW/donegroup"
 	"github.com/k1LoW/mo/internal/static"
 	"github.com/k1LoW/mo/version"
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 )
 
 type FileEntry struct {
@@ -621,6 +623,7 @@ func (s *State) AddPattern(absPattern, groupName string) ([]*FileEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("glob expansion failed: %w", err)
 	}
+	collate.New(language.Und, collate.Numeric).SortStrings(matches)
 
 	var entries []*FileEntry
 	for _, m := range matches {

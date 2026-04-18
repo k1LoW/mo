@@ -112,6 +112,27 @@ describe("buildTree", () => {
     expect(root.children[1].file?.id).toBe("1");
   });
 
+  it("sorts sibling files by natural order (i1, i2, ..., i10)", () => {
+    const files = [
+      makeFile("1", "/docs/i1.md"),
+      makeFile("2", "/docs/i10.md"),
+      makeFile("3", "/docs/i2.md"),
+      makeFile("4", "/docs/i11.md"),
+      makeFile("5", "/docs/i13.md"),
+      makeFile("6", "/docs/i3.md"),
+    ];
+    const root = buildTree(files);
+
+    expect(root.children.map((c) => c.name)).toEqual([
+      "i1.md",
+      "i2.md",
+      "i3.md",
+      "i10.md",
+      "i11.md",
+      "i13.md",
+    ]);
+  });
+
   it("mixes filesystem and uploaded files", () => {
     const files = [
       makeFile("1", "/docs/a.md"),

@@ -677,6 +677,33 @@ func TestResolveArgs_Directory(t *testing.T) {
 	}
 }
 
+func TestResolveArgs_DirectoryNaturalOrder(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"i1.md", "i2.md", "i10.md", "i11.md"} {
+		writeTestFile(t, filepath.Join(dir, name), []byte("# "+name))
+	}
+
+	files, _, err := resolveArgs([]string{dir}, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{
+		filepath.Join(dir, "i1.md"),
+		filepath.Join(dir, "i2.md"),
+		filepath.Join(dir, "i10.md"),
+		filepath.Join(dir, "i11.md"),
+	}
+	if len(files) != len(want) {
+		t.Fatalf("got %d files, want %d: %v", len(files), len(want), files)
+	}
+	for i := range want {
+		if files[i] != want[i] {
+			t.Errorf("files[%d] = %q, want %q", i, files[i], want[i])
+		}
+	}
+}
+
 func TestResolveArgs_DirectoryWithWatch(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, filepath.Join(dir, "a.md"), []byte("# A"))

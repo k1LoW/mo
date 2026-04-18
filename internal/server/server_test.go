@@ -500,6 +500,37 @@ func TestAddPattern_InitialExpansion(t *testing.T) {
 	}
 }
 
+func TestAddPattern_InitialExpansionNaturalOrder(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"i1.md", "i2.md", "i10.md", "i11.md"} {
+		os.WriteFile(filepath.Join(dir, name), []byte("# "+name), 0o600) //nolint:errcheck
+	}
+
+	s := newTestState(t)
+	pattern := filepath.Join(dir, "*.md")
+	entries, err := s.AddPattern(pattern, DefaultGroup)
+	if err != nil {
+		t.Fatalf("AddPattern returned error: %v", err)
+	}
+
+	want := []string{"i1.md", "i2.md", "i10.md", "i11.md"}
+	if len(entries) != len(want) {
+		t.Fatalf("got %d entries, want %d", len(entries), len(want))
+	}
+	for i, name := range want {
+		if entries[i].Name != name {
+			t.Errorf("entries[%d].Name = %q, want %q", i, entries[i].Name, name)
+		}
+	}
+
+	files := s.Groups()[0].Files
+	for i, name := range want {
+		if files[i].Name != name {
+			t.Errorf("group files[%d].Name = %q, want %q", i, files[i].Name, name)
+		}
+	}
+}
+
 func TestAddPattern_Duplicate(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o600) //nolint:errcheck
