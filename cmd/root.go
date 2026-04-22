@@ -59,7 +59,7 @@ var (
 	foreground                   bool
 	statusServer                 bool
 	watchMode                    bool
-	unwatchPatterns              []string
+	unwatchMode                  bool
 	recursive                    bool
 	closeFiles                   bool
 	clearBackup                  bool
@@ -156,6 +156,8 @@ Watch mode and glob patterns:
   $ mo -w -R docs/                    Watch docs/**/*.md
   $ mo -wR docs/                      Same (short-combined form)
   $ mo --unwatch '**/*.md'            Stop watching a pattern
+  $ mo --unwatch docs/                Stop watching docs/*.md
+  $ mo --unwatch -R docs/             Stop watching all patterns under docs/
 
   Without --watch, globs are expanded once and a directory argument
   opens the matching files without live-watching new additions.
@@ -193,7 +195,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&foreground, "foreground", false, "Run mo server in foreground (do not background)")
 	rootCmd.Flags().BoolVar(&statusServer, "status", false, "Show status of all running mo servers")
 	rootCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Treat directory and glob arguments as watch patterns")
-	rootCmd.Flags().StringArrayVar(&unwatchPatterns, "unwatch", nil, "Remove a watched glob pattern (repeatable)")
+	rootCmd.Flags().BoolVar(&unwatchMode, "unwatch", false, "Remove watched patterns for the given directory or glob arguments")
 	rootCmd.Flags().BoolVarP(&recursive, "recursive", "R", false, "Recurse into subdirectories when a directory is given")
 	rootCmd.Flags().BoolVar(&closeFiles, "close", false, "Close files instead of opening them")
 	rootCmd.Flags().BoolVar(&clearBackup, "clear", false, "Clear saved session for the specified port")
@@ -278,17 +280,12 @@ func run(cmd *cobra.Command, args []string) error {
 		return doRestart(addr)
 	}
 
-	if len(unwatchPatterns) > 0 {
+	if unwatchMode {
 		if watchMode {
 			return fmt.Errorf("cannot use --unwatch with --watch")
 		}
-		if len(args) > 0 {
-			return fmt.Errorf("cannot use --unwatch with file arguments")
-		}
-
-		resolved, err := resolvePatterns(unwatchPatterns)
-		if err != nil {
-			return err
+		if len(args) == 0 {
+			return fmt.Errorf("--unwatch requires a glob pattern or directory argument")
 		}
 
 		resolvedTarget, err := server.ResolveGroupName(target)
@@ -296,7 +293,12 @@ func run(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid target group name %q: %w", target, err)
 		}
 
-		return doUnwatch(addr, resolved, resolvedTarget)
+		patterns, err := resolveUnwatchArgs(args, recursive, addr, resolvedTarget)
+		if err != nil {
+			return err
+		}
+
+		return doUnwatch(addr, patterns, resolvedTarget)
 	}
 
 	if closeFiles {
@@ -555,19 +557,95 @@ func hasGlobChars(s string) bool {
 	return strings.ContainsAny(s, "*?[")
 }
 
-func resolvePatterns(patterns []string) ([]string, error) {
-	var resolved []string
-	for _, pat := range patterns {
-		if !hasGlobChars(pat) {
-			return nil, fmt.Errorf("pattern %q does not contain glob characters (* ? [); use file arguments instead", pat)
-		}
-		abs, err := filepath.Abs(pat)
+func resolveUnwatchArgs(args []string, recursive bool, addr, groupName string) ([]string, error) {
+	var patterns []string
+	var registered []string
+	var registeredFetched bool
+	for _, arg := range args {
+		abs, err := filepath.Abs(arg)
 		if err != nil {
-			return nil, fmt.Errorf("cannot resolve pattern %q: %w", pat, err)
+			return nil, fmt.Errorf("cannot resolve path %s: %w", arg, err)
 		}
-		resolved = append(resolved, abs)
+
+		if hasGlobChars(arg) {
+			patterns = append(patterns, abs)
+			continue
+		}
+
+		stat, err := os.Stat(abs)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				if !recursive {
+					return nil, fmt.Errorf("path not found: %s", abs)
+				}
+				// Allow deleted directories in recursive mode so users can
+				// clean up patterns that remain after the directory is removed.
+			} else {
+				return nil, fmt.Errorf("cannot stat path %s: %w", abs, err)
+			}
+		} else if !stat.IsDir() {
+			return nil, fmt.Errorf("--unwatch requires glob patterns or directories, not individual files (hint: use --close to remove individual files)")
+		}
+
+		if recursive {
+			if !registeredFetched {
+				registered, err = fetchRegisteredPatterns(addr, groupName)
+				if err != nil {
+					return nil, err
+				}
+				registeredFetched = true
+			}
+			prefix := abs + string(filepath.Separator)
+			var matched []string
+			for _, p := range registered {
+				if strings.HasPrefix(p, prefix) {
+					matched = append(matched, p)
+				}
+			}
+			if len(matched) == 0 {
+				return nil, fmt.Errorf("no watched patterns found under %s in group %q (use --status to see registered patterns)", abs, groupName)
+			}
+			patterns = append(patterns, matched...)
+		} else {
+			patterns = append(patterns, filepath.Join(abs, markdownGlob))
+		}
 	}
-	return resolved, nil
+	seen := make(map[string]struct{}, len(patterns))
+	unique := make([]string, 0, len(patterns))
+	for _, p := range patterns {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		unique = append(unique, p)
+	}
+
+	return unique, nil
+}
+
+func fetchRegisteredPatterns(addr, groupName string) ([]string, error) {
+	client := &http.Client{Timeout: probeTimeoutDefault}
+	resp, err := client.Get(fmt.Sprintf("http://%s/_/api/status", addr))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query server status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to query server status: %s", resp.Status)
+	}
+
+	var status statusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		return nil, fmt.Errorf("failed to decode server status: %w", err)
+	}
+
+	for _, g := range status.Groups {
+		if g.Name == groupName {
+			return g.Patterns, nil
+		}
+	}
+	return nil, fmt.Errorf("group %q not found (use --status to see registered groups)", groupName)
 }
 
 func resolveArgs(args []string, watchMode, recursive bool) (files, patterns []string, err error) {

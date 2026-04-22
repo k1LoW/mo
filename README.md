@@ -127,16 +127,20 @@ $ mo -R docs/                                  # Open every .md under docs/ (rec
 $ mo 'docs/*.md'                               # Expand and open matching .md files
 ```
 
-> **Note:** `--watch` is a boolean flag — it no longer takes a value. Pass patterns as positional arguments: `mo -w '**/*.md'` still works because the quoted glob lands in the positional list, but `mo --watch=PATTERN` is no longer accepted. Multiple patterns should be listed as separate positional arguments rather than repeating `-w`.
-
 #### Removing watch patterns
 
-Use `--unwatch` to stop watching a previously registered pattern. Files already added remain in the sidebar.
+`--unwatch` removes previously registered patterns. Pass glob patterns or directories as positional arguments to specify which patterns to remove. Regular file paths are not accepted (use `--close` to remove individual files from the sidebar). Files already added by a pattern remain in the sidebar.
 
 ``` console
 $ mo --unwatch '**/*.md'                              # Stop watching a pattern (default group)
+$ mo --unwatch docs/                                  # Stop watching docs/*.md
 $ mo --unwatch 'docs/**/*.md' --target docs            # Stop watching in a specific group
-$ mo --unwatch '/Users/you/project/**/*.md'            # Stop watching by absolute path
+```
+
+With `-R`, a directory argument removes **all** registered patterns under that directory at once. For example, if `docs/*.md`, `docs/sub/*.md`, and `docs/**/*.md` are all registered, a single command removes them all:
+
+``` console
+$ mo --unwatch -R docs/                               # Removes docs/*.md, docs/sub/*.md, docs/**/*.md, etc.
 ```
 
 Patterns are resolved to absolute paths before matching, so you can specify either a relative glob or the full path shown by `--status`.
@@ -260,7 +264,7 @@ $ mo --status --json
 | `--no-open` | | | Never open browser |
 | `--status` | | | Show all running mo servers |
 | `--watch` | `-w` | `false` | Treat directory and glob arguments as watch patterns |
-| `--unwatch` | | | Remove a watched glob pattern (repeatable) |
+| `--unwatch` | | `false` | Remove watched patterns for the given directory or glob arguments |
 | `--recursive` | `-R` | `false` | Recurse into subdirectories when a directory is given |
 | `--close` | | | Close files instead of opening them |
 | `--shutdown` | | | Shut down the running mo server |

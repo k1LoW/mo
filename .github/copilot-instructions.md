@@ -46,8 +46,9 @@ make ci
 - `--target` / `-t` — Tab group name (default: `"default"`)
 - `--open` — Always open browser
 - `--no-open` — Never open browser
-- `--watch` / `-w` — Glob pattern to watch for matching files (repeatable)
-- `--unwatch` — Remove a watched glob pattern (repeatable)
+- `--watch` / `-w` — Boolean flag that turns on watch mode; directory and glob positional arguments are registered as watch patterns
+- `--unwatch` — Boolean flag that removes watched patterns; directory and glob positional arguments specify which patterns to unwatch (with `-R`, a directory removes all patterns under it)
+- `--recursive` / `-R` — Recurse into subdirectories when a directory is given as an argument
 - `--close` — Close files instead of opening them
 - `--clear` — Clear saved session for the specified port
 - `--status` — Show status of all running mo servers
@@ -103,7 +104,7 @@ Key endpoints:
 - **Tab groups**: Files are organized into named groups (default: "default"). Group name maps to the URL path.
 - **Live-reload via SSE**: fsnotify watches files; `file-changed` events trigger frontend to re-fetch content by file ID.
 - **State persistence**: Server state (files, groups, patterns) is backed up to `$XDG_STATE_HOME/mo/backup/mo-<port>.json` via `internal/backup`. When starting a new server, backup is always restored and merged with CLI-specified files/patterns (restored entries first, CLI entries appended, duplicates skipped). The backup file is only deleted when the CLI is invoked with `--clear`.
-- **Glob pattern watching**: `--watch` registers glob patterns that are expanded to matching files and monitored for new files via fsnotify directory watches. Patterns are stored with reference-counted directory watches (`watchedDirs map[string]int`). `--unwatch` removes patterns and decrements watch ref counts. Groups persist as long as they have files or patterns.
+- **Glob pattern watching**: `--watch` enables watch mode; positional arguments that are globs or directories are registered as patterns, expanded to matching files, and monitored for new files via fsnotify directory watches. Patterns are stored with reference-counted directory watches (`watchedDirs map[string]int`). `--unwatch` is a boolean flag; positional arguments (globs or directories) determine which patterns to remove. With `-R`, a directory argument removes all registered patterns under that directory prefix. Groups persist as long as they have files or patterns.
 - **Resizable panels**: Both `Sidebar.tsx` (left) and `TocPanel.tsx` (right) use the same drag-to-resize pattern with localStorage persistence. Left sidebar uses `e.clientX`, right panel uses `window.innerWidth - e.clientX`.
 - **Toolbar buttons in content area**: The toolbar column (ToC + Raw toggles) lives inside `MarkdownViewer.tsx`, positioned with `shrink-0 flex flex-col gap-2 -mr-4 -mt-4` to align with the header.
 - **Sidebar view modes**: Flat (default, with drag-and-drop reorder via dnd-kit) and tree (hierarchical directory view). View mode is persisted per-group in localStorage. Collapsed directory state is managed inside `TreeView` and also persisted per-group.
