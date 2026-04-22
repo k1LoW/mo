@@ -101,23 +101,33 @@ $ mo notes.md --target notes      # Opens at http://localhost:6275/notes
 
 ![Group view](images/groups.png)
 
-### Glob pattern watching
+### Watch mode and glob patterns
 
-Use `--watch` (`-w`) to specify glob patterns. Matching files are opened automatically, and watched directories are monitored for new files.
-
-``` console
-$ mo --watch '**/*.md'                          # Watch and open all .md files recursively
-$ mo --watch 'docs/**/*.md' --target docs       # Watch docs/ tree in "docs" group
-$ mo --watch '*.md' --watch 'docs/**/*.md'      # Multiple patterns
-```
-
-When a directory is passed with `--watch`, it is automatically converted to a `dir/*.md` watch pattern:
+`--watch` (`-w`) turns on watch mode. Directory and glob positional arguments are registered as watch patterns, matching files are opened, and new matching files are picked up automatically.
 
 ``` console
-$ mo --watch docs/                             # Equivalent to mo --watch 'docs/*.md'
+$ mo -w '**/*.md'                              # Watch and open all .md files recursively
+$ mo -w 'docs/**/*.md' --target docs           # Watch docs/ tree in "docs" group
+$ mo -w '*.md' 'docs/**/*.md'                  # Multiple patterns (positional)
+$ mo -w docs/                                  # Watch docs/*.md
 ```
 
-`--watch` cannot be combined with file arguments. The `**` pattern matches directories recursively.
+Combine with `--recursive` (`-R`) to descend into subdirectories. Short flags can be combined:
+
+``` console
+$ mo -w -R docs/                               # Watch docs/**/*.md
+$ mo -wR docs/                                 # Same, short-combined
+```
+
+Without `--watch`, globs are expanded once and directory arguments open matching files without live-watching new additions:
+
+``` console
+$ mo docs/                                     # Open every .md directly in docs/
+$ mo -R docs/                                  # Open every .md under docs/ (recursive)
+$ mo 'docs/*.md'                               # Expand and open matching .md files
+```
+
+> **Note:** `--watch` is a boolean flag — it no longer takes a value. Pass patterns as positional arguments: `mo -w '**/*.md'` still works because the quoted glob lands in the positional list, but `mo --watch=PATTERN` is no longer accepted. Multiple patterns should be listed as separate positional arguments rather than repeating `-w`.
 
 #### Removing watch patterns
 
@@ -249,8 +259,9 @@ $ mo --status --json
 | `--open` | | | Always open browser |
 | `--no-open` | | | Never open browser |
 | `--status` | | | Show all running mo servers |
-| `--watch` | `-w` | | Glob pattern to watch for matching files (repeatable) |
+| `--watch` | `-w` | `false` | Treat directory and glob arguments as watch patterns |
 | `--unwatch` | | | Remove a watched glob pattern (repeatable) |
+| `--recursive` | `-R` | `false` | Recurse into subdirectories when a directory is given |
 | `--close` | | | Close files instead of opening them |
 | `--shutdown` | | | Shut down the running mo server |
 | `--restart` | | | Restart the running mo server |
