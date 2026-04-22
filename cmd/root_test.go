@@ -285,6 +285,58 @@ func TestResolveUnwatchArgs_RecursiveNoMatch(t *testing.T) {
 	}
 }
 
+func TestResolveUnwatchArgs_RecursiveDeletedDirectory(t *testing.T) {
+	// Use a path that does not exist on disk.
+	deletedDir := filepath.Join(t.TempDir(), "deleted")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := statusResponse{
+			Groups: []struct {
+				Name  string `json:"name"`
+				Files []struct {
+					Name string `json:"name"`
+					ID   string `json:"id"`
+					Path string `json:"path"`
+				} `json:"files"`
+				Patterns []string `json:"patterns,omitempty"`
+			}{
+				{
+					Name: "default",
+					Patterns: []string{
+						filepath.Join(deletedDir, "*.md"),
+						filepath.Join(deletedDir, "**/*.md"),
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp) //nolint:errcheck
+	})
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+	addr := strings.TrimPrefix(ts.URL, "http://")
+
+	patterns, err := resolveUnwatchArgs([]string{deletedDir}, true, addr, "default")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(patterns) != 2 {
+		t.Fatalf("got %d patterns, want 2: %v", len(patterns), patterns)
+	}
+}
+
+func TestResolveUnwatchArgs_NonRecursiveDeletedDirectory(t *testing.T) {
+	deletedDir := filepath.Join(t.TempDir(), "deleted")
+
+	_, err := resolveUnwatchArgs([]string{deletedDir}, false, "", "default")
+	if err == nil {
+		t.Fatal("expected error for non-existent directory without -R")
+	}
+	if !strings.Contains(err.Error(), "path not found") {
+		t.Fatalf("got error %q, want 'path not found'", err.Error())
+	}
+}
+
 func TestResolveUnwatchArgs_RecursiveGroupNotFound(t *testing.T) {
 	dir := t.TempDir()
 

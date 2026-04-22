@@ -575,11 +575,15 @@ func resolveUnwatchArgs(args []string, recursive bool, addr, groupName string) (
 		stat, err := os.Stat(abs)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				return nil, fmt.Errorf("path not found: %s", abs)
+				if !recursive {
+					return nil, fmt.Errorf("path not found: %s", abs)
+				}
+				// Allow deleted directories in recursive mode so users can
+				// clean up patterns that remain after the directory is removed.
+			} else {
+				return nil, fmt.Errorf("cannot stat path %s: %w", abs, err)
 			}
-			return nil, fmt.Errorf("cannot stat path %s: %w", abs, err)
-		}
-		if !stat.IsDir() {
+		} else if !stat.IsDir() {
 			return nil, fmt.Errorf("--unwatch requires glob patterns or directories, not individual files (hint: use --close to remove individual files)")
 		}
 
