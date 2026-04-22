@@ -559,6 +559,8 @@ func hasGlobChars(s string) bool {
 
 func resolveUnwatchArgs(args []string, recursive bool, addr, groupName string) ([]string, error) {
 	var patterns []string
+	var registered []string
+	var registeredFetched bool
 	for _, arg := range args {
 		abs, err := filepath.Abs(arg)
 		if err != nil {
@@ -582,9 +584,12 @@ func resolveUnwatchArgs(args []string, recursive bool, addr, groupName string) (
 		}
 
 		if recursive {
-			registered, err := fetchRegisteredPatterns(addr, groupName)
-			if err != nil {
-				return nil, err
+			if !registeredFetched {
+				registered, err = fetchRegisteredPatterns(addr, groupName)
+				if err != nil {
+					return nil, err
+				}
+				registeredFetched = true
 			}
 			prefix := abs + string(filepath.Separator)
 			var matched []string
