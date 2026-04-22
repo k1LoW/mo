@@ -1,5 +1,17 @@
 # Changelog
 
+## [v1.4.0](https://github.com/k1LoW/mo/compare/v1.3.0...v1.4.0) - 2026-04-22
+### Breaking Changes 🛠
+- feat: add --recursive (-R) flag and reshape --watch as a boolean toggle by @kechol in https://github.com/k1LoW/mo/pull/184
+- feat: reshape --unwatch as a boolean flag with positional pattern arguments by @k1LoW in https://github.com/k1LoW/mo/pull/186
+### New Features 🎉
+- fix: sort file lists in natural order (x/text/collate variant) by @kechol in https://github.com/k1LoW/mo/pull/183
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/180
+- chore(deps-dev): bump the dependencies group in /internal/frontend with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/181
+### Other Changes
+- feat: make `<code>` element brighter in dark mode by @kyu08 in https://github.com/k1LoW/mo/pull/182
+
 ## [v1.3.0](https://github.com/k1LoW/mo/compare/v1.2.0...v1.3.0) - 2026-04-15
 ### New Features 🎉
 - feat: fix the position of file menu by @kyu08 in https://github.com/k1LoW/mo/pull/176
