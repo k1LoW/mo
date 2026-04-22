@@ -127,8 +127,6 @@ $ mo -R docs/                                  # Open every .md under docs/ (rec
 $ mo 'docs/*.md'                               # Expand and open matching .md files
 ```
 
-> **Note:** `--watch` is a boolean flag — it no longer takes a value. Pass patterns as positional arguments: `mo -w '**/*.md'` still works because the quoted glob lands in the positional list, but `mo --watch=PATTERN` is no longer accepted. Multiple patterns should be listed as separate positional arguments rather than repeating `-w`.
-
 #### Removing watch patterns
 
 `--unwatch` removes previously registered patterns. Pass glob patterns or directories as positional arguments to specify which patterns to remove. Regular file paths are not accepted (use `--close` to remove individual files from the sidebar). Files already added by a pattern remain in the sidebar.
