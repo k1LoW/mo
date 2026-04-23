@@ -1,5 +1,10 @@
 # Changelog
 
+## [v1.4.1](https://github.com/k1LoW/mo/compare/v1.4.0...v1.4.1) - 2026-04-23
+### Dependency Updates ⬆️
+- chore(deps-dev): bump the dependencies group in /internal/frontend with 8 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/189
+- chore(deps): bump the dependencies group with 4 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/188
+
 ## [v1.4.0](https://github.com/k1LoW/mo/compare/v1.3.0...v1.4.0) - 2026-04-22
 ### Breaking Changes 🛠
 - feat: add --recursive (-R) flag and reshape --watch as a boolean toggle by @kechol in https://github.com/k1LoW/mo/pull/184
