@@ -20,7 +20,13 @@ import { useActiveHeading } from "./hooks/useActiveHeading";
 import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
 import type { FileEntry, Group, SearchResult } from "./hooks/useApi";
 import { fetchGroups, fetchSearchResults, removeFile, reorderFiles } from "./hooks/useApi";
-import { allFileIds, parseGroupFromPath, parseFileIdFromSearch, groupToPath } from "./utils/groups";
+import {
+  allFileIds,
+  parseGroupFromPath,
+  parseFileIdFromSearch,
+  groupToPath,
+  buildFileUrl,
+} from "./utils/groups";
 import { isMarkdownFile } from "./utils/filetype";
 
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
@@ -213,20 +219,27 @@ export function App() {
       .catch(() => {});
   }, []);
 
-  // Sync URL path with active group
+  // User-initiated navigation (file/group selection) calls pushState directly at
+  // the call site. This effect only reconciles the URL with state for automatic
+  // changes (initial mount, SSE updates, render-time fallbacks) via replaceState.
   useEffect(() => {
-    const expectedPath = groupToPath(activeGroup);
-    if (window.location.pathname !== expectedPath) {
-      window.history.replaceState(null, "", expectedPath);
-    }
-  }, [activeGroup]);
+    // initialFileId hasn't been consumed yet — keep the URL as the user landed.
+    if (initialFileId != null) return;
+    const expectedUrl = activeFileId
+      ? buildFileUrl(activeGroup, activeFileId)
+      : groupToPath(activeGroup);
+    if (window.location.pathname + window.location.search === expectedUrl) return;
+    window.history.replaceState(null, "", expectedUrl);
+  }, [activeGroup, activeFileId, initialFileId]);
 
-  // Clear search params after consuming initial file ID
   useEffect(() => {
-    if (initialFileId === null && window.location.search) {
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-  }, [initialFileId]);
+    const handlePopState = () => {
+      setActiveGroup(parseGroupFromPath(window.location.pathname));
+      setActiveFileId(parseFileIdFromSearch(window.location.search));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     if (!searchQuery?.trim()) {
@@ -351,21 +364,37 @@ export function App() {
     });
   }, []);
 
-  const handleGroupChange = (name: string) => {
+  const handleGroupChange = useCallback((name: string) => {
+    window.history.pushState(null, "", groupToPath(name));
     setActiveGroup(name);
     setActiveFileId(null);
-    window.history.pushState(null, "", groupToPath(name));
-  };
-
-  const handleFileOpened = useCallback((fileId: string) => {
-    setActiveFileId(fileId);
-    setPendingSearchHeading(null);
   }, []);
 
-  const handleSearchResultSelect = useCallback((fileId: string, heading?: string) => {
-    setActiveFileId(fileId);
-    setPendingSearchHeading(heading || null);
-  }, []);
+  const handleFileSelect = useCallback(
+    (fileId: string) => {
+      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId));
+      setActiveFileId(fileId);
+    },
+    [activeGroup],
+  );
+
+  const handleFileOpened = useCallback(
+    (fileId: string) => {
+      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId));
+      setActiveFileId(fileId);
+      setPendingSearchHeading(null);
+    },
+    [activeGroup],
+  );
+
+  const handleSearchResultSelect = useCallback(
+    (fileId: string, heading?: string) => {
+      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId));
+      setActiveFileId(fileId);
+      setPendingSearchHeading(heading || null);
+    },
+    [activeGroup],
+  );
 
   const handleRemoveFile = useCallback(() => {
     if (activeFileId != null) {
@@ -459,7 +488,7 @@ export function App() {
             groups={groups}
             activeGroup={activeGroup}
             activeFileId={activeFileId}
-            onFileSelect={setActiveFileId}
+            onFileSelect={handleFileSelect}
             onFilesReorder={handleFilesReorder}
             viewMode={currentViewMode}
             showTitle={currentShowTitle}
