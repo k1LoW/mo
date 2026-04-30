@@ -475,6 +475,44 @@ func (s *State) MoveFile(id, sourceGroupName, targetGroup string) error {
 	return nil
 }
 
+// RemoveFilesByPath removes every file entry whose path matches absPath across
+// all groups, cleans up the watcher, and drops any groups left empty without
+// patterns. Returns true if at least one entry was removed.
+func (s *State) RemoveFilesByPath(absPath string) bool {
+	if absPath == "" {
+		return false
+	}
+
+	s.mu.Lock()
+	removed := false
+	for name, g := range s.groups {
+		filtered := g.Files[:0]
+		for _, f := range g.Files {
+			if f.Path == absPath {
+				removed = true
+				slog.Info("file removed", "path", f.Path, "id", f.ID, "group", name) //nolint:gosec // G706: structured logging fields, no injection risk
+				continue
+			}
+			filtered = append(filtered, f)
+		}
+		g.Files = filtered
+		if len(g.Files) == 0 && !s.groupHasPatterns(name) {
+			delete(s.groups, name)
+		}
+	}
+	if removed && s.watcher != nil {
+		if err := s.watcher.Remove(absPath); err != nil {
+			slog.Warn("failed to unwatch file", "path", absPath, "error", err)
+		}
+	}
+	s.mu.Unlock()
+
+	if removed {
+		s.sendEvent(sseEvent{Name: eventUpdate, Data: "{}"})
+	}
+	return removed
+}
+
 func (s *State) RemoveFile(id, groupName string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1451,6 +1489,13 @@ func handleFileContent(state *State) http.HandlerFunc {
 		} else {
 			content, err := os.ReadFile(entry.Path) //nolint:gosec // Path is server-managed, not user-supplied
 			if err != nil {
+				if os.IsNotExist(err) {
+					// File is gone from disk: drop it from state so the group
+					// (and possibly the group itself) disappears from the UI.
+					state.RemoveFilesByPath(entry.Path)
+					http.Error(w, "file not found", http.StatusNotFound)
+					return
+				}
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
