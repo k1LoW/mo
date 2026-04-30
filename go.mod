@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.0
 	github.com/k1LoW/donegroup v1.10.3
 	github.com/k1LoW/errors v1.2.0
 	github.com/muesli/termenv v0.16.0
