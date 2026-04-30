@@ -1,5 +1,10 @@
 # Changelog
 
+## [v1.5.0](https://github.com/k1LoW/mo/compare/v1.4.1...v1.5.0) - 2026-04-30
+### New Features 🎉
+- fix(frontend): sync URL with active file across all selection paths by @kechol in https://github.com/k1LoW/mo/pull/193
+- fix(frontend): use <a> for file/heading navigation by @kechol in https://github.com/k1LoW/mo/pull/194
+
 ## [v1.4.1](https://github.com/k1LoW/mo/compare/v1.4.0...v1.4.1) - 2026-04-27
 ### Dependency Updates ⬆️
 - chore(deps-dev): bump the dependencies group in /internal/frontend with 8 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/189
