@@ -1964,6 +1964,71 @@ func TestRemoveFileNotFound(t *testing.T) {
 	}
 }
 
+func TestHandleFileContent_RemovesEntryWhenFileMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "ghost.md")
+	if err := os.WriteFile(path, []byte("# Ghost"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s := newTestState(t)
+	entry, err := s.AddFile(path, DefaultGroup)
+	if err != nil {
+		t.Fatalf("AddFile: %v", err)
+	}
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := NewHandler(s)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/_/api/groups/default/files/%s/content", entry.ID), nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("got status %d, want %d", rec.Code, http.StatusNotFound)
+	}
+
+	if groups := s.Groups(); len(groups) != 0 {
+		t.Fatalf("expected group to be removed after missing file fetch, got %d groups", len(groups))
+	}
+}
+
+func TestRemoveFilesByPath_RemovesAcrossGroupsAndCleansEmptyGroups(t *testing.T) {
+	tmpDir := t.TempDir()
+	pathA := filepath.Join(tmpDir, "shared.md")
+	pathB := filepath.Join(tmpDir, "other.md")
+	for _, p := range []string{pathA, pathB} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s := newTestState(t)
+	if _, err := s.AddFile(pathA, DefaultGroup); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddFile(pathA, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddFile(pathB, "other"); err != nil {
+		t.Fatal(err)
+	}
+
+	if !s.RemoveFilesByPath(pathA) {
+		t.Fatal("RemoveFilesByPath returned false")
+	}
+
+	groups := s.Groups()
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group remaining (default should be empty and dropped), got %d", len(groups))
+	}
+	if groups[0].Name != "other" || len(groups[0].Files) != 1 || groups[0].Files[0].Path != pathB {
+		t.Fatalf("unexpected remaining group state: %+v", groups[0])
+	}
+}
+
 func TestHandleOpenFile_PercentEncodedNonASCII(t *testing.T) {
 	// Create a temp directory with a non-ASCII markdown file
 	tmpDir := t.TempDir()
