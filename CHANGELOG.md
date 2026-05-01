@@ -1,5 +1,13 @@
 # Changelog
 
+## [v1.5.1](https://github.com/k1LoW/mo/compare/v1.5.0...v1.5.1) - 2026-04-30
+### New Features 🎉
+- fix: drop missing files from state when content fetch hits ENOENT by @k1LoW in https://github.com/k1LoW/mo/pull/196
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group with 3 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/199
+- chore(deps): bump github.com/fsnotify/fsnotify from 1.9.0 to 1.10.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/198
+- chore(deps-dev): bump the dependencies group in /internal/frontend with 3 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/200
+
 ## [v1.5.0](https://github.com/k1LoW/mo/compare/v1.4.1...v1.5.0) - 2026-04-30
 ### New Features 🎉
 - fix(frontend): sync URL with active file across all selection paths by @kechol in https://github.com/k1LoW/mo/pull/193
