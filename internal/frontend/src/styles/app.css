@@ -15,6 +15,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --color-gh-bg: #0d1117;
   --color-gh-bg-secondary: #161b22;
   --color-gh-bg-sidebar: #161b22;
