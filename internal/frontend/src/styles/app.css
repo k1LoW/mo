@@ -14,6 +14,10 @@
   --color-gh-header-border: #d0d7de;
 }
 
+[data-theme="light"] {
+  color-scheme: light;
+}
+
 [data-theme="dark"] {
   color-scheme: dark;
   --color-gh-bg: #0d1117;
@@ -76,7 +80,6 @@ body,
 }
 
 [data-theme="light"] .markdown-body {
-  color-scheme: light;
   --fgColor-accent: #0969da;
   --fgColor-danger: #d1242f;
   --fgColor-default: #1f2328;
@@ -196,7 +199,6 @@ body,
 }
 
 [data-theme="dark"] .markdown-body {
-  color-scheme: dark;
   --fgColor-accent: #4493f8;
   --fgColor-danger: #f85149;
   --fgColor-default: #f0f6fc;
