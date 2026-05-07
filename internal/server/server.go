@@ -960,17 +960,21 @@ func (s *State) watchLoop() {
 			// State entries may be stored under either the original or the
 			// canonical form (e.g. when the user mixes /var/... and
 			// /private/var/... explicitly), so look up refs for both paths
-			// when they differ. Each FileEntry has a single Path string, so
-			// the union cannot double-fire on the same entry.
-			refs := s.findRefsByPath(eventPath)
+			// when they differ. Track each set separately so file-change
+			// scheduling only runs for the form(s) that actually matched,
+			// while delete handling still operates on the union.
+			refsTranslated := s.findRefsByPath(eventPath)
+			var refsRaw []fileRef
 			if eventPath != event.Name {
-				refs = append(refs, s.findRefsByPath(event.Name)...)
+				refsRaw = s.findRefsByPath(event.Name)
 			}
-			if len(refs) > 0 {
+			if len(refsTranslated)+len(refsRaw) > 0 {
 				if event.Op.Has(fsnotify.Write) || event.Op.Has(fsnotify.Create) {
 					slog.Info("file changed", "path", eventPath)
-					s.scheduleFileChanged(eventPath)
-					if eventPath != event.Name {
+					if len(refsTranslated) > 0 {
+						s.scheduleFileChanged(eventPath)
+					}
+					if len(refsRaw) > 0 {
 						s.scheduleFileChanged(event.Name)
 					}
 				}
@@ -982,13 +986,18 @@ func (s *State) watchLoop() {
 						if err := s.watcher.Add(eventPath, watchOps); err != nil {
 							// File is actually gone — remove from file list
 							slog.Info("file deleted, removing from list", "path", eventPath)
-							for _, ref := range refs {
+							for _, ref := range refsTranslated {
+								s.RemoveFile(ref.ID, ref.Group)
+							}
+							for _, ref := range refsRaw {
 								s.RemoveFile(ref.ID, ref.Group)
 							}
 						} else {
 							slog.Info("re-watching file", "path", eventPath)
-							s.scheduleFileChanged(eventPath)
-							if eventPath != event.Name {
+							if len(refsTranslated) > 0 {
+								s.scheduleFileChanged(eventPath)
+							}
+							if len(refsRaw) > 0 {
 								s.scheduleFileChanged(event.Name)
 							}
 						}
