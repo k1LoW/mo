@@ -1730,6 +1730,100 @@ func TestDirMove(t *testing.T) {
 	}
 }
 
+func TestTranslateEventPath(t *testing.T) {
+	canonicalDir := filepath.FromSlash("/private/var/foo/docs")
+	originalDir := filepath.FromSlash("/var/foo/docs")
+	s := &State{pathAliases: map[string]string{
+		canonicalDir: originalDir,
+	}}
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"exact match", canonicalDir, originalDir},
+		{"prefix match for file under aliased dir", filepath.Join(canonicalDir, "new.md"), filepath.Join(originalDir, "new.md")},
+		{"prefix match for nested file", filepath.Join(canonicalDir, "sub", "note.md"), filepath.Join(originalDir, "sub", "note.md")},
+		{"no alias passes through", filepath.FromSlash("/other/path/file.md"), filepath.FromSlash("/other/path/file.md")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := s.translateEventPath(tt.in); got != tt.want {
+				t.Errorf("translateEventPath(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFindRefsByPath_CoversBothPathFormsViaUnion(t *testing.T) {
+	originalDir := filepath.FromSlash("/var/foo/docs")
+	canonicalDir := filepath.FromSlash("/private/var/foo/docs")
+	originalFile := filepath.Join(originalDir, "x.md")
+	canonicalFile := filepath.Join(canonicalDir, "x.md")
+
+	s := &State{
+		groups: map[string]*Group{
+			DefaultGroup: {Name: DefaultGroup, Files: []*FileEntry{
+				{ID: "orig", Path: originalFile},
+				{ID: "canon", Path: canonicalFile},
+			}},
+		},
+		pathAliases: map[string]string{canonicalDir: originalDir},
+	}
+
+	// Simulate the event delivered for canonicalFile and the watchLoop's
+	// union of findRefsByPath(translated) ∪ findRefsByPath(raw).
+	eventName := canonicalFile
+	eventPath := s.translateEventPath(eventName)
+	refs := s.findRefsByPath(eventPath)
+	if eventPath != eventName {
+		refs = append(refs, s.findRefsByPath(eventName)...)
+	}
+
+	got := map[string]bool{}
+	for _, r := range refs {
+		got[r.ID] = true
+	}
+	if !got["orig"] || !got["canon"] {
+		t.Errorf("union refs = %v, want both \"orig\" and \"canon\"", got)
+	}
+}
+
+func TestPathAliasRegisterAndUnregister(t *testing.T) {
+	s := &State{
+		pathAliases:  map[string]string{},
+		aliasReverse: map[string]string{},
+	}
+
+	// Build a temp dir whose path differs from its EvalSymlinks form on macOS
+	// (e.g. /var/... → /private/var/...), so resolvePathAlias has work to do.
+	dir := t.TempDir()
+	canonical := resolvePathAlias(dir)
+	if canonical == "" {
+		t.Skipf("temp dir %q is already canonical; skipping", dir)
+	}
+
+	s.registerPathAlias(dir, canonical)
+	if got := s.pathAliases[canonical]; got != dir {
+		t.Errorf("pathAliases[%q] = %q, want %q", canonical, got, dir)
+	}
+	if got := s.aliasReverse[dir]; got != canonical {
+		t.Errorf("aliasReverse[%q] = %q, want %q", dir, got, canonical)
+	}
+
+	s.unregisterPathAlias(dir)
+	if _, ok := s.pathAliases[canonical]; ok {
+		t.Errorf("pathAliases[%q] still present after unregister", canonical)
+	}
+	if _, ok := s.aliasReverse[dir]; ok {
+		t.Errorf("aliasReverse[%q] still present after unregister", dir)
+	}
+
+	// unregister of an unknown path is a no-op.
+	s.unregisterPathAlias("/nonexistent")
+}
+
 func TestExtractTitle(t *testing.T) {
 	tests := []struct {
 		name    string

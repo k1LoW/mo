@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/fsnotify/fsnotify"
+	"github.com/gofsnotify/fsnotify"
 	"github.com/k1LoW/donegroup"
 	"github.com/k1LoW/mo/internal/static"
 	"github.com/k1LoW/mo/version"
@@ -167,6 +167,10 @@ const (
 	eventFileChanged = "file-changed"
 )
 
+// watchOps is the set of fsnotify ops the watch loop reacts to.
+// Chmod is intentionally excluded because the loop ignores it.
+const watchOps = fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Rename
+
 // GlobPattern represents a glob pattern being watched for new files.
 type GlobPattern struct {
 	Pattern      string // Absolute glob pattern
@@ -190,6 +194,16 @@ type State struct {
 	shutdownCh  chan struct{}
 	patterns    []*GlobPattern
 	watchedDirs map[string]int // directory → reference count
+	// pathAliases maps a canonical (symlink-resolved) path back to the
+	// original path we stored. The fsnotify watcher canonicalizes paths,
+	// so events arrive with the resolved form (e.g. /private/var/...) while
+	// our state keeps the user-facing form (/var/...). This mapping lets
+	// the watch loop translate event paths back to their stored keys.
+	pathAliases map[string]string
+	// aliasReverse maps the original path to its canonical form, so an
+	// entry can be removed without re-running EvalSymlinks (which would
+	// fail once the underlying file or directory is gone).
+	aliasReverse map[string]string
 
 	fileChangeDebounce time.Duration
 	fileChangeTimers   map[string]*time.Timer
@@ -214,6 +228,8 @@ func NewState(ctx context.Context) *State {
 		restartCh:          make(chan string, 1),
 		shutdownCh:         make(chan struct{}, 1),
 		watchedDirs:        make(map[string]int),
+		pathAliases:        make(map[string]string),
+		aliasReverse:       make(map[string]string),
 		fileChangeDebounce: defaultFileChangeDebounce,
 		fileChangeTimers:   make(map[string]*time.Timer),
 	}
@@ -277,6 +293,10 @@ func (s *State) AddFile(absPath, groupName string) (*FileEntry, error) {
 	}
 
 	title := extractTitle(string(head))
+	var canonical string
+	if s.watcher != nil {
+		canonical = resolvePathAlias(absPath)
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -303,8 +323,10 @@ func (s *State) AddFile(absPath, groupName string) (*FileEntry, error) {
 	g.Files = append(g.Files, entry)
 
 	if s.watcher != nil {
-		if err := s.watcher.Add(absPath); err != nil {
+		if err := s.watcher.Add(absPath, watchOps); err != nil {
 			slog.Warn("failed to watch file", "path", absPath, "error", err)
+		} else {
+			s.registerPathAlias(absPath, canonical)
 		}
 	}
 
@@ -509,6 +531,7 @@ func (s *State) RemoveFilesByPath(absPath string) bool {
 		if err := s.watcher.Remove(absPath); err != nil {
 			slog.Warn("failed to unwatch file", "path", absPath, "error", err)
 		}
+		s.unregisterPathAlias(absPath)
 	}
 	s.mu.Unlock()
 
@@ -561,6 +584,7 @@ func (s *State) RemoveFile(id, groupName string) bool {
 			if err := s.watcher.Remove(removedPath); err != nil {
 				slog.Warn("failed to unwatch file", "path", removedPath, "error", err)
 			}
+			s.unregisterPathAlias(removedPath)
 		}
 	}
 
@@ -918,6 +942,7 @@ func (s *State) removeDirWatch(dir string) {
 					slog.Warn("failed to remove directory watch", "dir", dir, "error", err)
 				}
 			}
+			s.unregisterPathAlias(dir)
 		} else {
 			s.watchedDirs[dir] = count
 		}
@@ -931,35 +956,63 @@ func (s *State) watchLoop() {
 			if !ok {
 				return
 			}
-			refs := s.findRefsByPath(event.Name)
-			if len(refs) > 0 {
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-					slog.Info("file changed", "path", event.Name)
-					s.scheduleFileChanged(event.Name)
+			eventPath := s.translateEventPath(event.Name)
+			// State entries may be stored under either the original or the
+			// canonical form (e.g. when the user mixes /var/... and
+			// /private/var/... explicitly), so look up refs for both paths
+			// when they differ. Track each set separately so file-change
+			// scheduling only runs for the form(s) that actually matched,
+			// while delete handling still operates on the union.
+			refsTranslated := s.findRefsByPath(eventPath)
+			var refsRaw []fileRef
+			if eventPath != event.Name {
+				refsRaw = s.findRefsByPath(event.Name)
+			}
+			if len(refsTranslated)+len(refsRaw) > 0 {
+				if event.Op.Has(fsnotify.Write) || event.Op.Has(fsnotify.Create) {
+					slog.Info("file changed", "path", eventPath)
+					if len(refsTranslated) > 0 {
+						s.scheduleFileChanged(eventPath)
+					}
+					if len(refsRaw) > 0 {
+						s.scheduleFileChanged(event.Name)
+					}
 				}
 				// Editors using atomic save (write-to-temp + rename) cause
 				// the original inode to disappear, which removes the watch.
 				// Re-add the watch so subsequent saves are still detected.
-				if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+				if event.Op.Has(fsnotify.Remove) || event.Op.Has(fsnotify.Rename) {
 					time.AfterFunc(100*time.Millisecond, func() {
-						if err := s.watcher.Add(event.Name); err != nil {
+						if err := s.watcher.Add(eventPath, watchOps); err != nil {
 							// File is actually gone — remove from file list
-							slog.Info("file deleted, removing from list", "path", event.Name)
-							for _, ref := range refs {
+							slog.Info("file deleted, removing from list", "path", eventPath)
+							for _, ref := range refsTranslated {
+								s.RemoveFile(ref.ID, ref.Group)
+							}
+							for _, ref := range refsRaw {
 								s.RemoveFile(ref.ID, ref.Group)
 							}
 						} else {
-							slog.Info("re-watching file", "path", event.Name)
-							s.scheduleFileChanged(event.Name)
+							slog.Info("re-watching file", "path", eventPath)
+							if len(refsTranslated) > 0 {
+								s.scheduleFileChanged(eventPath)
+							}
+							if len(refsRaw) > 0 {
+								s.scheduleFileChanged(event.Name)
+							}
 						}
 					})
 				}
 			}
-			if (event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove)) && s.isWatchedDir(event.Name) {
-				s.handleDirMove(event.Name)
+			if event.Op.Has(fsnotify.Rename) || event.Op.Has(fsnotify.Remove) {
+				if s.isWatchedDir(eventPath) {
+					s.handleDirMove(eventPath)
+				} else if eventPath != event.Name && s.isWatchedDir(event.Name) {
+					s.handleDirMove(event.Name)
+				}
 			}
-			if event.Has(fsnotify.Create) {
-				s.handleCreateForGlobs(event.Name)
+			if event.Op.Has(fsnotify.Create) {
+				s.handleCreateForGlobs(eventPath)
 			}
 		case err, ok := <-s.watcher.Errors:
 			if !ok {
@@ -1048,6 +1101,69 @@ type fileRef struct {
 	Group string
 }
 
+// resolvePathAlias returns the canonical (symlink-resolved) form of orig
+// when it differs from orig, or "" otherwise. Performs filesystem I/O, so
+// callers should invoke it outside any critical section.
+func resolvePathAlias(orig string) string {
+	canonical, err := filepath.EvalSymlinks(orig)
+	if err != nil || canonical == orig {
+		return ""
+	}
+	return canonical
+}
+
+// registerPathAlias records canonical → orig (and the reverse) so watcher
+// events can be mapped back to the stored path. canonical must be the
+// pre-resolved value returned by resolvePathAlias. Caller must hold s.mu
+// for write.
+func (s *State) registerPathAlias(orig, canonical string) {
+	if canonical == "" {
+		return
+	}
+	s.pathAliases[canonical] = orig
+	s.aliasReverse[orig] = canonical
+}
+
+// unregisterPathAlias removes any alias previously registered for orig.
+// Caller must hold s.mu for write.
+func (s *State) unregisterPathAlias(orig string) {
+	canonical, ok := s.aliasReverse[orig]
+	if !ok {
+		return
+	}
+	delete(s.pathAliases, canonical)
+	delete(s.aliasReverse, orig)
+}
+
+// translateEventPath returns the stored form of an event path when the
+// watcher reported a canonicalized variant; otherwise it returns p as-is.
+func (s *State) translateEventPath(p string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if orig, ok := s.pathAliases[p]; ok {
+		return orig
+	}
+	// Files created inside a watched (symlinked) directory arrive with the
+	// canonical path of that directory as a prefix, but only the directory
+	// itself has an alias entry. Walk up parents to find the closest alias
+	// and rebuild the path with the original prefix.
+	dir := p
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return p
+		}
+		dir = parent
+		if orig, ok := s.pathAliases[dir]; ok {
+			rel, err := filepath.Rel(dir, p)
+			if err != nil {
+				return p
+			}
+			return filepath.Join(orig, rel)
+		}
+	}
+}
+
 func (s *State) findRefsByPath(absPath string) []fileRef {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -1116,13 +1232,30 @@ func (s *State) watchDirsForPattern(gp *GlobPattern) {
 
 func (s *State) addDirWatch(dir string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.watchedDirs[dir]++
+	added := false
 	if s.watchedDirs[dir] == 1 && s.watcher != nil {
-		if err := s.watcher.Add(dir); err != nil {
+		if err := s.watcher.Add(dir, watchOps); err != nil {
 			delete(s.watchedDirs, dir)
 			slog.Warn("failed to watch directory", "path", dir, "error", err)
+		} else {
+			added = true
 		}
+	}
+	s.mu.Unlock()
+
+	if !added {
+		return
+	}
+
+	canonical := resolvePathAlias(dir)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Register the alias only if the directory is still being watched: a
+	// concurrent removeDirWatch may have dropped it during the unlock window.
+	if _, stillWatched := s.watchedDirs[dir]; stillWatched {
+		s.registerPathAlias(dir, canonical)
 	}
 }
 
