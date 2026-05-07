@@ -1081,7 +1081,25 @@ func (s *State) translateEventPath(p string) string {
 	if orig, ok := s.pathAliases[p]; ok {
 		return orig
 	}
-	return p
+	// Files created inside a watched (symlinked) directory arrive with the
+	// canonical path of that directory as a prefix, but only the directory
+	// itself has an alias entry. Walk up parents to find the closest alias
+	// and rebuild the path with the original prefix.
+	dir := p
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return p
+		}
+		dir = parent
+		if orig, ok := s.pathAliases[dir]; ok {
+			rel, err := filepath.Rel(dir, p)
+			if err != nil {
+				return p
+			}
+			return filepath.Join(orig, rel)
+		}
+	}
 }
 
 func (s *State) findRefsByPath(absPath string) []fileRef {

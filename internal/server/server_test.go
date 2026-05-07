@@ -1730,6 +1730,30 @@ func TestDirMove(t *testing.T) {
 	}
 }
 
+func TestTranslateEventPath(t *testing.T) {
+	s := &State{pathAliases: map[string]string{
+		"/private/var/foo/docs": "/var/foo/docs",
+	}}
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"exact match", "/private/var/foo/docs", "/var/foo/docs"},
+		{"prefix match for file under aliased dir", "/private/var/foo/docs/new.md", "/var/foo/docs/new.md"},
+		{"prefix match for nested file", "/private/var/foo/docs/sub/note.md", "/var/foo/docs/sub/note.md"},
+		{"no alias passes through", "/other/path/file.md", "/other/path/file.md"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := s.translateEventPath(tt.in); got != tt.want {
+				t.Errorf("translateEventPath(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtractTitle(t *testing.T) {
 	tests := []struct {
 		name    string
