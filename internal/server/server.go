@@ -293,7 +293,10 @@ func (s *State) AddFile(absPath, groupName string) (*FileEntry, error) {
 	}
 
 	title := extractTitle(string(head))
-	canonical := resolvePathAlias(absPath)
+	var canonical string
+	if s.watcher != nil {
+		canonical = resolvePathAlias(absPath)
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
