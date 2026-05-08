@@ -1739,6 +1739,7 @@ func TestWatchedFile_RetainedAfterAtomicSaveRewrite(t *testing.T) {
 	defer cancel()
 
 	s := NewState(ctx)
+	t.Cleanup(s.CloseAllSubscribers)
 
 	dir := t.TempDir()
 	target := filepath.Join(dir, "foo.md")
@@ -1768,11 +1769,20 @@ func TestWatchedFile_RetainedAfterAtomicSaveRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wait past the watchLoop's 100ms re-watch delay plus the debounce.
-	time.Sleep(500 * time.Millisecond)
-
-	if s.FindFile(id, DefaultGroup) == nil {
-		t.Fatalf("file %q was wrongly removed from the list after rewrite", target)
+	// Poll FindFile until the watchLoop has had time to process the
+	// Write|Rename event (re-watch delay 100ms + debounce). Fail fast if
+	// the file is dropped at any point during the window.
+	deadline := time.After(2 * time.Second)
+	for {
+		if s.FindFile(id, DefaultGroup) == nil {
+			t.Fatalf("file %q was wrongly removed from the list after rewrite", target)
+		}
+		select {
+		case <-deadline:
+			return
+		default:
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
