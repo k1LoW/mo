@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.5.4](https://github.com/k1LoW/mo/compare/v1.5.3...v1.5.4) - 2026-05-08
+### Fix bug 🐛
+- fix: keep watched files on coalesced rename flags from FSEvents by @k1LoW in https://github.com/k1LoW/mo/pull/209
+### Dependency Updates ⬆️
+- chore(deps): bump pnpm/action-setup from 6.0.4 to 6.0.5 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/206
+- chore(deps): bump the dependencies group in /internal/frontend with 5 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/207
+
 ## [v1.5.3](https://github.com/k1LoW/mo/compare/v1.5.2...v1.5.3) - 2026-05-07
 ### Other Changes
 - chore: migrate from fsnotify/fsnotify to gofsnotify/fsnotify by @k1LoW in https://github.com/k1LoW/mo/pull/204
