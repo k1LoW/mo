@@ -1730,6 +1730,52 @@ func TestDirMove(t *testing.T) {
 	}
 }
 
+func TestWatchedFile_RetainedAfterAtomicSaveRewrite(t *testing.T) {
+	// Regression: macOS FSEvents coalesces historical flags, so a plain
+	// Write after a previous atomic save (write tmp + rename) arrives as
+	// Write|Rename. The watchLoop must not drop the file from the list in
+	// that case; only an actually-missing file should be removed.
+	ctx, cancel := donegroup.WithCancel(context.Background())
+	defer cancel()
+
+	s := NewState(ctx)
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "foo.md")
+	if err := os.WriteFile(target, []byte("# init"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pattern := filepath.Join(dir, "*.md")
+	entries, err := s.AddPattern(pattern, DefaultGroup)
+	if err != nil {
+		t.Fatalf("AddPattern returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(entries))
+	}
+	id := entries[0].ID
+
+	tmp := target + ".tmp"
+	if err := os.WriteFile(tmp, []byte("# atomic"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(target, []byte("# rewrite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait past the watchLoop's 100ms re-watch delay plus the debounce.
+	time.Sleep(500 * time.Millisecond)
+
+	if s.FindFile(id, DefaultGroup) == nil {
+		t.Fatalf("file %q was wrongly removed from the list after rewrite", target)
+	}
+}
+
 func TestTranslateEventPath(t *testing.T) {
 	canonicalDir := filepath.FromSlash("/private/var/foo/docs")
 	originalDir := filepath.FromSlash("/var/foo/docs")
