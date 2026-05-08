@@ -979,12 +979,16 @@ func (s *State) watchLoop() {
 					}
 				}
 				// Editors using atomic save (write-to-temp + rename) cause
-				// the original inode to disappear, which removes the watch.
-				// Re-add the watch so subsequent saves are still detected.
+				// the original inode to disappear, which removes the watch on
+				// some backends. Stat the path to decide whether the file is
+				// actually gone, then re-add the watch if it still exists.
+				// FSEvents on macOS coalesces historical flags, so a plain
+				// Write after a previous atomic save arrives as Write|Rename;
+				// trusting Add's error to mean "file gone" wrongly drops the
+				// entry (ErrAlreadyAdded for a still-live watch).
 				if event.Op.Has(fsnotify.Remove) || event.Op.Has(fsnotify.Rename) {
 					time.AfterFunc(100*time.Millisecond, func() {
-						if err := s.watcher.Add(eventPath, watchOps); err != nil {
-							// File is actually gone — remove from file list
+						if _, statErr := os.Stat(eventPath); errors.Is(statErr, os.ErrNotExist) {
 							slog.Info("file deleted, removing from list", "path", eventPath)
 							for _, ref := range refsTranslated {
 								s.RemoveFile(ref.ID, ref.Group)
@@ -992,14 +996,18 @@ func (s *State) watchLoop() {
 							for _, ref := range refsRaw {
 								s.RemoveFile(ref.ID, ref.Group)
 							}
-						} else {
-							slog.Info("re-watching file", "path", eventPath)
-							if len(refsTranslated) > 0 {
-								s.scheduleFileChanged(eventPath)
-							}
-							if len(refsRaw) > 0 {
-								s.scheduleFileChanged(event.Name)
-							}
+							return
+						}
+						if err := s.watcher.Add(eventPath, watchOps); err != nil && !errors.Is(err, fsnotify.ErrAlreadyAdded) {
+							slog.Warn("failed to re-watch file", "path", eventPath, "error", err)
+							return
+						}
+						slog.Info("re-watching file", "path", eventPath)
+						if len(refsTranslated) > 0 {
+							s.scheduleFileChanged(eventPath)
+						}
+						if len(refsRaw) > 0 {
+							s.scheduleFileChanged(event.Name)
 						}
 					})
 				}
