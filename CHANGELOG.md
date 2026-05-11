@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.5.5](https://github.com/k1LoW/mo/compare/v1.5.4...v1.5.5) - 2026-05-11
+### Dependency Updates ⬆️
+- chore(deps): bump mermaid from 11.14.0 to 11.15.0 in /internal/frontend by @dependabot[bot] in https://github.com/k1LoW/mo/pull/210
+
 ## [v1.5.4](https://github.com/k1LoW/mo/compare/v1.5.3...v1.5.4) - 2026-05-08
 ### Fix bug 🐛
 - fix: keep watched files on coalesced rename flags from FSEvents by @k1LoW in https://github.com/k1LoW/mo/pull/209
