@@ -30,7 +30,7 @@
     "@shikijs/rehype": "^4.0.2",
     "github-markdown-css": "^5.8.1",
     "katex": "^0.16.45",
-    "mermaid": "^11.14.0",
+    "mermaid": "^11.15.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
