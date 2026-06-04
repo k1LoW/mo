@@ -27,12 +27,12 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@shikijs/rehype": "^4.1.0",
+    "@shikijs/rehype": "^4.2.0",
     "github-markdown-css": "^5.8.1",
     "katex": "^0.17.0",
     "mermaid": "^11.15.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
     "react-zoom-pan-pinch": "^4.0.3",
     "rehype-github-alerts": "^4.2.0",
@@ -42,25 +42,25 @@
     "rehype-slug": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "shiki": "^4.1.0"
+    "shiki": "^4.2.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^6.0.2",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.8",
     "jsdom": "^29.1.1",
-    "oxfmt": "^0.52.0",
-    "oxlint": "^1.67.0",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
     "playwright": "^1.60.0",
     "rollup-plugin-license": "^3.7.1",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.3",
-    "vite": "^8.0.14",
-    "vitest": "^4.1.7"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
   }
 }
