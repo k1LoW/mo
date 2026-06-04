@@ -1,5 +1,17 @@
 # Changelog
 
+## [v1.5.6](https://github.com/k1LoW/mo/compare/v1.5.5...v1.5.6) - 2026-06-04
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group in /internal/frontend with 10 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/214
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/212
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/213
+- chore(deps): bump goreleaser/goreleaser-action from 7.2.1 to 7.2.2 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/219
+- chore(deps): bump the dependencies group in /internal/frontend with 9 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/220
+- chore(deps): bump the dependencies group in /internal/frontend with 3 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/221
+### Other Changes
+- Fix raw asset path boundary by @mattn in https://github.com/k1LoW/mo/pull/222
+- docs(security): clarify threat model for local HTTP server by @k1LoW in https://github.com/k1LoW/mo/pull/223
+
 ## [v1.5.5](https://github.com/k1LoW/mo/compare/v1.5.4...v1.5.5) - 2026-05-11
 ### Dependency Updates ⬆️
 - chore(deps): bump mermaid from 11.14.0 to 11.15.0 in /internal/frontend by @dependabot[bot] in https://github.com/k1LoW/mo/pull/210
