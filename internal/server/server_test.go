@@ -2270,3 +2270,48 @@ func TestHandleFileRaw_PercentEncodedNonASCII(t *testing.T) {
 		t.Errorf("expected body to contain %q, got %q", "asset content", got)
 	}
 }
+
+func TestHandleFileRaw_RejectsSiblingDirectoryTraversal(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, "docs")
+	siblingDir := filepath.Join(tmpDir, "docs2")
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(siblingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	mdFile := filepath.Join(baseDir, "index.md")
+	secretFile := filepath.Join(siblingDir, "secret.txt")
+	if err := os.WriteFile(mdFile, []byte("# Index"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secretFile, []byte("secret content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	mdID := FileID(mdFile)
+	s := newTestState(t)
+	s.groups[DefaultGroup] = &Group{
+		Name: DefaultGroup,
+		Files: []*FileEntry{
+			{ID: mdID, Name: "index.md", Path: mdFile},
+		},
+	}
+
+	handler := NewHandler(s)
+	escapedPath := url.PathEscape(filepath.ToSlash(filepath.Join("..", "docs2", "secret.txt")))
+	reqURL := fmt.Sprintf("/_/api/groups/%s/files/%s/raw/%s", DefaultGroup, mdID, escapedPath)
+	req := httptest.NewRequest("GET", reqURL, nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("got status %d, want %d; body: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "secret content") {
+		t.Fatal("response leaked sibling directory content")
+	}
+}
