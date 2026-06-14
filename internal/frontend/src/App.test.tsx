@@ -169,7 +169,7 @@ describe("App URL sync", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findAllByText("README.md");
+    await screen.findByText("README.md");
     // The first file is auto-selected; URL is replaced (not pushed).
     await waitFor(() => {
       expect(window.location.search).toBe("?file=aaa11111");
@@ -212,7 +212,7 @@ describe("App URL sync", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findAllByText("README.md");
+    await screen.findByText("README.md");
     await waitFor(() => {
       expect(window.location.search).toBe("?file=aaa11111");
     });

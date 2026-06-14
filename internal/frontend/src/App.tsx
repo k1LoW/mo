@@ -476,14 +476,6 @@ export function App() {
         <ViewModeToggle viewMode={currentViewMode} onToggle={handleViewModeToggle} />
         <TitleToggle showTitle={currentShowTitle} onToggle={handleTitleToggle} />
         <SearchToggle isOpen={searchQuery != null} onToggle={handleSearchToggle} />
-        {activeFile && (
-          <div
-            className="flex-1 min-w-0 text-center text-sm font-medium text-gh-header-text truncate"
-            title={activeFile.uploaded ? activeFile.name : activeFile.path}
-          >
-            {activeFile.name}
-          </div>
-        )}
         <div className="ml-auto flex items-center gap-2">
           <FontSizeToggle fontSize={fontSize} onChange={setFontSize} />
           <WidthToggle isWide={isWide} onToggle={() => setIsWide((v) => !v)} />
