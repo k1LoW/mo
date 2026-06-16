@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/gofsnotify/fsnotify"
+	"github.com/fswatcher/fswatcher"
 	"github.com/k1LoW/donegroup"
 	"github.com/k1LoW/mo/internal/static"
 	"github.com/k1LoW/mo/version"
@@ -167,9 +167,9 @@ const (
 	eventFileChanged = "file-changed"
 )
 
-// watchOps is the set of fsnotify ops the watch loop reacts to.
+// watchOps is the set of fswatcher ops the watch loop reacts to.
 // Chmod is intentionally excluded because the loop ignores it.
-const watchOps = fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Rename
+const watchOps = fswatcher.Create | fswatcher.Write | fswatcher.Remove | fswatcher.Rename
 
 // GlobPattern represents a glob pattern being watched for new files.
 type GlobPattern struct {
@@ -189,13 +189,13 @@ type State struct {
 	groups      map[string]*Group
 	subscribers map[chan sseEvent]struct{}
 	subMu       sync.RWMutex
-	watcher     *fsnotify.Watcher
+	watcher     *fswatcher.Watcher
 	restartCh   chan string
 	shutdownCh  chan struct{}
 	patterns    []*GlobPattern
 	watchedDirs map[string]int // directory → reference count
 	// pathAliases maps a canonical (symlink-resolved) path back to the
-	// original path we stored. The fsnotify watcher canonicalizes paths,
+	// original path we stored. The fswatcher watcher canonicalizes paths,
 	// so events arrive with the resolved form (e.g. /private/var/...) while
 	// our state keeps the user-facing form (/var/...). This mapping lets
 	// the watch loop translate event paths back to their stored keys.
@@ -216,7 +216,7 @@ type State struct {
 const defaultFileChangeDebounce = 200 * time.Millisecond
 
 func NewState(ctx context.Context) *State {
-	w, err := fsnotify.NewWatcher()
+	w, err := fswatcher.NewWatcher()
 	if err != nil {
 		slog.Warn("failed to create file watcher", "error", err)
 	}
@@ -969,7 +969,7 @@ func (s *State) watchLoop() {
 				refsRaw = s.findRefsByPath(event.Name)
 			}
 			if len(refsTranslated)+len(refsRaw) > 0 {
-				if event.Op.Has(fsnotify.Write) || event.Op.Has(fsnotify.Create) {
+				if event.Op.Has(fswatcher.Write) || event.Op.Has(fswatcher.Create) {
 					slog.Info("file changed", "path", eventPath)
 					if len(refsTranslated) > 0 {
 						s.scheduleFileChanged(eventPath)
@@ -986,7 +986,7 @@ func (s *State) watchLoop() {
 				// Write after a previous atomic save arrives as Write|Rename;
 				// trusting Add's error to mean "file gone" wrongly drops the
 				// entry (ErrAlreadyAdded for a still-live watch).
-				if event.Op.Has(fsnotify.Remove) || event.Op.Has(fsnotify.Rename) {
+				if event.Op.Has(fswatcher.Remove) || event.Op.Has(fswatcher.Rename) {
 					time.AfterFunc(100*time.Millisecond, func() {
 						if _, statErr := os.Stat(eventPath); errors.Is(statErr, os.ErrNotExist) {
 							slog.Info("file deleted, removing from list", "path", eventPath)
@@ -998,7 +998,7 @@ func (s *State) watchLoop() {
 							}
 							return
 						}
-						if err := s.watcher.Add(eventPath, watchOps); err != nil && !errors.Is(err, fsnotify.ErrAlreadyAdded) {
+						if err := s.watcher.Add(eventPath, watchOps); err != nil && !errors.Is(err, fswatcher.ErrAlreadyAdded) {
 							slog.Warn("failed to re-watch file", "path", eventPath, "error", err)
 							return
 						}
@@ -1012,14 +1012,14 @@ func (s *State) watchLoop() {
 					})
 				}
 			}
-			if event.Op.Has(fsnotify.Rename) || event.Op.Has(fsnotify.Remove) {
+			if event.Op.Has(fswatcher.Rename) || event.Op.Has(fswatcher.Remove) {
 				if s.isWatchedDir(eventPath) {
 					s.handleDirMove(eventPath)
 				} else if eventPath != event.Name && s.isWatchedDir(event.Name) {
 					s.handleDirMove(event.Name)
 				}
 			}
-			if event.Op.Has(fsnotify.Create) {
+			if event.Op.Has(fswatcher.Create) {
 				s.handleCreateForGlobs(eventPath)
 			}
 		case err, ok := <-s.watcher.Errors:

@@ -5,8 +5,8 @@ github.com/bmatcuk/doublestar/v4 v4.10.0/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fT
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/ISU=
 github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
-github.com/gofsnotify/fsnotify v0.0.6 h1:y2POBhaRPz5eP6Dx+tJUO43OEtQBNGSoPObkEAKJP0g=
-github.com/gofsnotify/fsnotify v0.0.6/go.mod h1:/KuEftpEwF5ZydPXMzJ+htk0bwlnfVWD6NCKUICjQmc=
+github.com/fswatcher/fswatcher v0.1.0 h1:g1Y+SP6+I7Omc8ZiGkfd2WPB3RpaWqASYbK9NdfajTc=
+github.com/fswatcher/fswatcher v0.1.0/go.mod h1:uH4fRb/O2zZUuqbGVktogTQM5RD7mGEMArGyVU6DMxo=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/k1LoW/donegroup v1.10.3 h1:+FPxE8MSxgqsdkxj8Y8hfFF1rHooh04pdl1441EeylQ=
