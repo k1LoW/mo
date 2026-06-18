@@ -18,6 +18,7 @@ import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
 import { CloseFileButton } from "./CloseFileButton";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
+import { buildRelativeOpenUrl } from "../utils/groups";
 import { parseFrontmatter } from "../utils/frontmatter";
 import { stripMdxSyntax } from "../utils/mdx";
 import { isMarkdownFile, detectLanguage } from "../utils/filetype";
@@ -672,7 +673,17 @@ export function MarkdownViewer({
             );
           case "markdown":
             return (
-              <a href={href} onClick={(e) => handleLinkClick(e, resolved.hrefPath)} {...props}>
+              <a
+                href={buildRelativeOpenUrl(activeGroup, fileId, resolved.hrefPath)}
+                onClick={(e) => {
+                  // Modifier / middle clicks fall through so the browser opens the
+                  // self-resolving href in a new tab (App resolves it on load); only a
+                  // plain click navigates in place.
+                  if (!isPlainLeftClick(e)) return;
+                  handleLinkClick(e, resolved.hrefPath);
+                }}
+                {...props}
+              >
                 {children}
               </a>
             );
@@ -691,7 +702,7 @@ export function MarkdownViewer({
         }
       },
     }),
-    [fileId, handleLinkClick, onZoom],
+    [activeGroup, fileId, handleLinkClick, onZoom],
   );
 
   const isMarkdown = isMarkdownFile(fileName);

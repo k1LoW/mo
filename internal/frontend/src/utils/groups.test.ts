@@ -5,6 +5,8 @@ import {
   groupToPath,
   buildFileUrl,
   parseFileIdFromSearch,
+  buildRelativeOpenUrl,
+  parseRelativeOpenFromSearch,
 } from "./groups";
 import type { Group } from "../hooks/useApi";
 
@@ -116,5 +118,45 @@ describe("parseFileIdFromSearch", () => {
 
   it("returns null for empty value", () => {
     expect(parseFileIdFromSearch("?file=")).toBeNull();
+  });
+});
+
+describe("buildRelativeOpenUrl", () => {
+  it("encodes source id and relative path for the default group", () => {
+    expect(buildRelativeOpenUrl("default", "abc12345", "next.md")).toBe(
+      "/?from=abc12345&open=next.md",
+    );
+  });
+
+  it("encodes a nested path for a named group", () => {
+    expect(buildRelativeOpenUrl("design", "abc12345", "docs/guide.mdx")).toBe(
+      "/design?from=abc12345&open=docs%2Fguide.mdx",
+    );
+  });
+
+  it("round-trips a path with spaces back to the original", () => {
+    const url = buildRelativeOpenUrl("default", "abc12345", "a b.md");
+    expect(parseRelativeOpenFromSearch(url.slice(url.indexOf("?")))?.open).toBe("a b.md");
+  });
+});
+
+describe("parseRelativeOpenFromSearch", () => {
+  it("returns null for empty search", () => {
+    expect(parseRelativeOpenFromSearch("")).toBeNull();
+  });
+
+  it("parses from and open params", () => {
+    expect(parseRelativeOpenFromSearch("?from=abc12345&open=docs%2Fguide.mdx")).toEqual({
+      from: "abc12345",
+      open: "docs/guide.mdx",
+    });
+  });
+
+  it("returns null when from is missing", () => {
+    expect(parseRelativeOpenFromSearch("?open=next.md")).toBeNull();
+  });
+
+  it("returns null when open is missing", () => {
+    expect(parseRelativeOpenFromSearch("?from=abc12345")).toBeNull();
   });
 });
