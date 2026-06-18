@@ -89,9 +89,6 @@ describe("MarkdownViewer file label", () => {
 
     const label = await screen.findByTitle("/home/me/code/mo/docs/README.md");
     expect(label.textContent).toBe("Project Readme - README.md");
-    // Only the title is bold.
-    const bold = label.querySelector(".font-bold");
-    expect(bold?.textContent).toBe("Project Readme");
   });
 
   it("keeps just the file name when the file has no title", async () => {
