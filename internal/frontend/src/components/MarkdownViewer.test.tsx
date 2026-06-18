@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MarkdownViewer } from "./MarkdownViewer";
+import { openRelativeFile } from "../hooks/useApi";
 
 vi.mock("mermaid", () => ({
   default: {
@@ -13,6 +14,8 @@ vi.mock("../hooks/useApi", () => ({
   fetchFileContent: vi.fn().mockResolvedValue({ content: "# Hello", baseDir: "/repo" }),
   openRelativeFile: vi.fn(),
 }));
+
+import { fetchFileContent } from "../hooks/useApi";
 
 // jsdom has no layout, so stub getBoundingClientRect: the scroll container and
 // the sticky bar sit at the top, and the heading goes wherever a test wants it.
@@ -113,5 +116,49 @@ describe("MarkdownViewer file label", () => {
 
     const label = await screen.findByTitle("/home/me/code/mo/docs/README.md");
     expect(label).toHaveClass("text-right");
+  });
+});
+
+describe("MarkdownViewer relative links", () => {
+  beforeEach(() => {
+    vi.mocked(fetchFileContent).mockResolvedValue({
+      content: "[Next page](next.md)",
+      baseDir: "/repo",
+    });
+    vi.mocked(openRelativeFile).mockResolvedValue({
+      id: "bbb22222",
+      name: "next.md",
+      path: "/repo/next.md",
+    });
+  });
+
+  it("points the href at a self-resolving relative-open URL", async () => {
+    renderViewer();
+    const link = await screen.findByRole("link", { name: "Next page" });
+    expect(link).toHaveAttribute("href", "/?from=aaa11111&open=next.md");
+  });
+
+  it("opens in place on a plain click", async () => {
+    const onFileOpened = vi.fn();
+    renderViewer({ onFileOpened });
+    const link = await screen.findByRole("link", { name: "Next page" });
+
+    const notPrevented = fireEvent.click(link);
+
+    expect(notPrevented).toBe(false); // preventDefault was called
+    await waitFor(() => expect(onFileOpened).toHaveBeenCalledWith("bbb22222"));
+    expect(openRelativeFile).toHaveBeenCalledWith("default", "aaa11111", "next.md");
+  });
+
+  it("lets the browser handle a Cmd/Ctrl click natively", async () => {
+    const onFileOpened = vi.fn();
+    renderViewer({ onFileOpened });
+    const link = await screen.findByRole("link", { name: "Next page" });
+
+    const notPrevented = fireEvent.click(link, { metaKey: true });
+
+    expect(notPrevented).toBe(true); // default preserved → new browser tab
+    expect(openRelativeFile).not.toHaveBeenCalled();
+    expect(onFileOpened).not.toHaveBeenCalled();
   });
 });

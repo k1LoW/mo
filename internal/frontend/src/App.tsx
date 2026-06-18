@@ -19,11 +19,18 @@ import { useFileDrop } from "./hooks/useFileDrop";
 import { useActiveHeading } from "./hooks/useActiveHeading";
 import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
 import type { FileEntry, Group, SearchResult } from "./hooks/useApi";
-import { fetchGroups, fetchSearchResults, removeFile, reorderFiles } from "./hooks/useApi";
+import {
+  fetchGroups,
+  fetchSearchResults,
+  openRelativeFile,
+  removeFile,
+  reorderFiles,
+} from "./hooks/useApi";
 import {
   allFileIds,
   parseGroupFromPath,
   parseFileIdFromSearch,
+  parseRelativeOpenFromSearch,
   groupToPath,
   buildFileUrl,
 } from "./utils/groups";
@@ -219,10 +226,36 @@ export function App() {
       .catch(() => {});
   }, []);
 
+  // A relative Markdown link opened in a new tab lands here with from/open params
+  // because the target file has no ID until the server resolves it. Resolve it once
+  // on load, then rewrite the URL to the canonical ?file= form.
+  const relativeOpen = useRef(parseRelativeOpenFromSearch(window.location.search));
+  const relativeOpenStarted = useRef(false);
+  useEffect(() => {
+    if (relativeOpenStarted.current) return;
+    const rel = relativeOpen.current;
+    if (!rel) return;
+    relativeOpenStarted.current = true;
+    const group = parseGroupFromPath(window.location.pathname);
+    openRelativeFile(group, rel.from, rel.open)
+      .then((entry) => {
+        relativeOpen.current = null;
+        setInitialFileId(entry.id);
+        window.history.replaceState(null, "", buildFileUrl(group, entry.id));
+        loadGroups();
+      })
+      .catch(() => {
+        relativeOpen.current = null;
+        window.history.replaceState(null, "", groupToPath(group));
+      });
+  }, [loadGroups]);
+
   // User-initiated navigation (file/group selection) calls pushState directly at
   // the call site. This effect only reconciles the URL with state for automatic
   // changes (initial mount, SSE updates, render-time fallbacks) via replaceState.
   useEffect(() => {
+    // A relative-open resolve is in flight; it owns the URL until it settles.
+    if (relativeOpen.current != null) return;
     // initialFileId hasn't been consumed yet — keep the URL as the user landed.
     if (initialFileId != null) return;
     const expectedUrl = activeFileId
