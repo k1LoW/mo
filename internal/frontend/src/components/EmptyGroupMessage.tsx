@@ -10,9 +10,12 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-function buildUnwatchCommand(pattern: string, groupName: string): string {
-  const flag = groupName && groupName !== "default" ? ` -t ${shellQuote(groupName)}` : "";
-  return `mo --unwatch ${shellQuote(pattern)}${flag}`;
+const DEFAULT_PORT = "6275";
+
+function buildUnwatchCommand(pattern: string, groupName: string, port: string): string {
+  const groupFlag = groupName && groupName !== "default" ? ` -t ${shellQuote(groupName)}` : "";
+  const portFlag = port && port !== DEFAULT_PORT ? ` -p ${port}` : "";
+  return `mo --unwatch ${shellQuote(pattern)}${groupFlag}${portFlag}`;
 }
 
 interface CommandRowProps {
@@ -92,6 +95,7 @@ export function EmptyGroupMessage({ group }: EmptyGroupMessageProps) {
   }
 
   const multiple = patterns.length > 1;
+  const port = typeof window !== "undefined" ? window.location.port : "";
 
   return (
     <div className="flex flex-col items-start max-w-2xl mx-auto mt-12 p-6 text-gh-text-secondary text-sm gap-4">
@@ -103,7 +107,7 @@ export function EmptyGroupMessage({ group }: EmptyGroupMessageProps) {
       </p>
       <div className="flex flex-col gap-2 w-full">
         {patterns.map((p) => (
-          <CommandRow key={p} command={buildUnwatchCommand(p, groupName)} />
+          <CommandRow key={p} command={buildUnwatchCommand(p, groupName, port)} />
         ))}
       </div>
     </div>
