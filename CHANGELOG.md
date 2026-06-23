@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.6.2](https://github.com/k1LoW/mo/compare/v1.6.1...v1.6.2) - 2026-06-23
+
+### Fix bug 🐛
+- fix(frontend): increase z-index of `GroupDropdown` not to be concealed by active file label by @kyu08 in https://github.com/k1LoW/mo/pull/239
+### Other Changes
+- feat: hint how to unwatch when an empty group is kept alive by patterns by @k1LoW in https://github.com/k1LoW/mo/pull/241
+
 ## [v1.6.1](https://github.com/k1LoW/mo/compare/v1.6.0...v1.6.1) - 2026-06-22
 
 ### Dependency Updates ⬆️
