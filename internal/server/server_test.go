@@ -2124,6 +2124,47 @@ func TestHandleGroups_IncludesPatterns(t *testing.T) {
 	}
 }
 
+func TestHandleGroups_FilesAlwaysArrayForPatternOnlyGroup(t *testing.T) {
+	s := newTestState(t)
+
+	// Pattern in an empty directory: AddPattern creates the group with a nil
+	// Files slice. Without normalization the JSON would encode as
+	// `"files": null`, which breaks the frontend's `group.files.length`.
+	dir := t.TempDir()
+	pattern := filepath.Join(dir, "*.md")
+	if _, err := s.AddPattern(pattern, DefaultGroup); err != nil {
+		t.Fatalf("AddPattern: %v", err)
+	}
+
+	handler := NewHandler(s)
+	req := httptest.NewRequest("GET", "/_/api/groups", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	raw := rec.Body.String()
+	if strings.Contains(raw, `"files":null`) {
+		t.Errorf("response contains \"files\":null, want \"files\":[]: %s", raw)
+	}
+
+	var groups []Group
+	if err := json.Unmarshal(rec.Body.Bytes(), &groups); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("got %d groups, want 1", len(groups))
+	}
+	if groups[0].Files == nil {
+		t.Errorf("Files = nil, want empty slice")
+	}
+	if len(groups[0].Files) != 0 {
+		t.Errorf("len(Files) = %d, want 0", len(groups[0].Files))
+	}
+}
+
 func TestCSPHeader(t *testing.T) {
 	s := newTestState(t)
 	handler := NewHandler(s)

@@ -1606,6 +1606,13 @@ func handleGroups(state *State) http.HandlerFunc {
 		}
 		result := make([]statusGroup, len(groups))
 		for i, g := range groups {
+			// Normalize a nil Files slice (e.g. pattern-only group whose pattern
+			// currently matches zero files) to an empty slice so the JSON encodes
+			// as `"files": []` instead of `"files": null` — the frontend assumes
+			// the field is always an array.
+			if g.Files == nil {
+				g.Files = []*FileEntry{}
+			}
 			result[i] = statusGroup{
 				Group:    g,
 				Patterns: patternsByGroup[g.Name],
