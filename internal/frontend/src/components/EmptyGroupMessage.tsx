@@ -84,9 +84,10 @@ function CommandRow({ command }: CommandRowProps) {
 
 export function EmptyGroupMessage({ group }: EmptyGroupMessageProps) {
   const patterns = group?.patterns ?? [];
+  const fileCount = group?.files.length ?? 0;
   const groupName = group?.name ?? "";
 
-  if (patterns.length === 0) {
+  if (patterns.length === 0 || fileCount > 0) {
     return (
       <div className="flex items-center justify-center h-50 text-gh-text-secondary text-sm">
         No file selected
