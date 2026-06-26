@@ -260,11 +260,15 @@ function MermaidImageCopyButton({ svg }: { svg: string }) {
 
   const handleCopy = async () => {
     try {
-      const blob = await svgToPngBlob(svg);
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      // Pass the Blob promise directly to ClipboardItem so clipboard.write() is
+      // invoked synchronously inside the user gesture. Awaiting the blob first
+      // lets the transient user activation expire on Chrome and breaks the
+      // user-gesture requirement on Safari/WebKit, both surfacing as a silent
+      // no-op click.
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": svgToPngBlob(svg) })]);
       setCopied(true);
-    } catch {
-      // clipboard API may fail in insecure contexts
+    } catch (err) {
+      console.error("mermaid copy image failed", err);
     }
   };
 
@@ -296,9 +300,20 @@ function MermaidImageCopyButton({ svg }: { svg: string }) {
 
 function svgToPngBlob(svgString: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    // Mermaid flowchart/stateDiagram labels embed HTML void elements such as
+    // <br> inside <foreignObject>, which the strict "image/svg+xml" parser
+    // rejects silently (documentElement becomes <html> and the width, height,
+    // and viewBox lookups all return null). Parsing as "text/html" is lenient
+    // and still preserves the case of SVG attributes (viewBox,
+    // preserveAspectRatio, etc.). XMLSerializer then normalizes <br> to <br/>
+    // so the resulting data URL loads cleanly as an SVG image.
     const parser = new DOMParser();
-    const doc = parser.parseFromString(svgString, "image/svg+xml");
-    const svgEl = doc.documentElement;
+    const doc = parser.parseFromString(svgString, "text/html");
+    const svgEl = doc.querySelector("svg");
+    if (!svgEl) {
+      reject(new Error("No SVG element found"));
+      return;
+    }
 
     // Ensure xmlns is present for standalone SVG rendering
     if (!svgEl.getAttribute("xmlns")) {
