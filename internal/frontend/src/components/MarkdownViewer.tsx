@@ -260,11 +260,15 @@ function MermaidImageCopyButton({ svg }: { svg: string }) {
 
   const handleCopy = async () => {
     try {
-      const blob = await svgToPngBlob(svg);
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      // Pass the Blob promise directly to ClipboardItem so clipboard.write() is
+      // invoked synchronously inside the user gesture. Awaiting the blob first
+      // lets the transient user activation expire on Chrome and breaks the
+      // user-gesture requirement on Safari/WebKit, both surfacing as a silent
+      // no-op click.
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": svgToPngBlob(svg) })]);
       setCopied(true);
-    } catch {
-      // clipboard API may fail in insecure contexts
+    } catch (err) {
+      console.error("mermaid copy image failed", err);
     }
   };
 
