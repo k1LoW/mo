@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.6.3](https://github.com/k1LoW/mo/compare/v1.6.2...v1.6.3) - 2026-06-26
+
+### Fix bug 🐛
+- fix(frontend): make the Mermaid copy-image button work in Chrome/Safari and on HTML-label diagrams by @k1LoW in https://github.com/k1LoW/mo/pull/243
+### Dependency Updates ⬆️
+- chore(deps): bump actions/setup-go from 6.4.0 to 6.5.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/242
+
 ## [v1.6.2](https://github.com/k1LoW/mo/compare/v1.6.1...v1.6.2) - 2026-06-23
 
 ### Fix bug 🐛
