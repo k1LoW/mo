@@ -418,7 +418,7 @@ func run(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "mo: added %d item(s) to http://%s\n", added, addr)
 
 			if isNewGroup || open {
-				openBrowser(addr)
+				openBrowser(addr, deeplinks...)
 			}
 			return nil
 		}
@@ -1389,7 +1389,7 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 		}
 	}()
 
-	openBrowser(addr)
+	openBrowser(addr, deeplinks...)
 
 	select {
 	case <-ctx.Done():
@@ -1473,18 +1473,23 @@ func startBackground(addr string, filesByGroup map[string][]string, patternsByGr
 	emitServeOutput(addr, deeplinks, true)
 	fmt.Fprintf(os.Stderr, "mo: serving at http://%s (pid %d)\n", addr, pid)
 
-	openBrowser(addr)
+	openBrowser(addr, deeplinks...)
 
 	return nil
 }
 
-func openBrowser(addr string) {
+func openBrowser(addr string, deeplinks ...deeplinkEntry) {
 	if noOpen {
 		return
 	}
-	url := fmt.Sprintf("http://%s", addr)
-	if target != server.DefaultGroup {
-		url = fmt.Sprintf("%s/%s", url, target)
+	var url string
+	if len(deeplinks) > 0 {
+		url = deeplinks[len(deeplinks)-1].URL
+	} else {
+		url = fmt.Sprintf("http://%s", addr)
+		if target != server.DefaultGroup {
+			url = fmt.Sprintf("%s/%s", url, target)
+		}
 	}
 	if err := browser.OpenURL(url); err != nil {
 		slog.Warn("could not open browser", "error", err)
