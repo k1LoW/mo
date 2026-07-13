@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.6.4](https://github.com/k1LoW/mo/compare/v1.6.3...v1.6.4) - 2026-07-13
+
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group across 1 directory with 13 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/248
+- chore(deps): bump golang.org/x/text from 0.38.0 to 0.40.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/247
+- chore(deps): bump goreleaser/goreleaser-action from 7.2.2 to 7.2.3 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/245
+### Other Changes
+- fix(frontend): render base64 data:image URIs in Markdown images by @k1LoW in https://github.com/k1LoW/mo/pull/249
+
 ## [v1.6.3](https://github.com/k1LoW/mo/compare/v1.6.2...v1.6.3) - 2026-06-26
 
 ### Fix bug 🐛
