@@ -36,6 +36,11 @@ export function resolveImageSrc(
   group: string,
   fileId: string,
 ): string | undefined {
+  // Only data:image/ passes through: rehype-sanitize can whitelist the "data" scheme
+  // but not the MIME type, so restrict it here as defense in depth.
+  if (src && src.startsWith("data:image/")) {
+    return src;
+  }
   if (src && !src.startsWith("http://") && !src.startsWith("https://")) {
     return `${rawBasePath(group, fileId)}/${src}`;
   }

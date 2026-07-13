@@ -125,6 +125,18 @@ describe("resolveImageSrc", () => {
   it("returns undefined for undefined src", () => {
     expect(resolveImageSrc(undefined, "default", "a")).toBeUndefined();
   });
+
+  it("passes through data:image/ URIs unchanged", () => {
+    const src =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+P+/HgAFhAJ/wlseKgAAAABJRU5ErkJggg==";
+    expect(resolveImageSrc(src, "default", "a")).toBe(src);
+  });
+
+  it("does not pass through non-image data: URIs", () => {
+    expect(resolveImageSrc("data:text/html,<script>alert(1)</script>", "default", "c")).toBe(
+      "/_/api/groups/default/files/c/raw/data:text/html,<script>alert(1)</script>",
+    );
+  });
 });
 
 describe("extractLanguage", () => {
