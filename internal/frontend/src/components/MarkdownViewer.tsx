@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
-import Markdown from "react-markdown";
+import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
@@ -62,7 +62,21 @@ const sanitizeSchema = {
     span: [...(defaultSchema.attributes?.["span"] || []), "style"],
     div: [...(defaultSchema.attributes?.["div"] || []), "style", "align"],
   },
+  protocols: {
+    ...defaultSchema.protocols,
+    src: [...(defaultSchema.protocols?.["src"] || []), "data"],
+  },
 };
+
+// react-markdown's defaultUrlTransform drops every data: URI, on top of
+// rehype-sanitize. Restrict the exception to data:image/ on src: img is
+// script-inert for data URIs, while data:text/html on href would be a vector.
+function urlTransform(url: string, key: string): string {
+  if (key === "src" && url.startsWith("data:image/")) {
+    return url;
+  }
+  return defaultUrlTransform(url);
+}
 
 interface MarkdownViewerProps {
   fileId: string;
@@ -751,6 +765,7 @@ export function MarkdownViewer({
             rehypeKatex,
           ]}
           components={components}
+          urlTransform={urlTransform}
         >
           {md}
         </Markdown>

@@ -117,6 +117,34 @@ describe("MarkdownViewer file label", () => {
   });
 });
 
+describe("MarkdownViewer images", () => {
+  const pngDataUri =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+P+/HgAFhAJ/wlseKgAAAABJRU5ErkJggg==";
+
+  it("renders a data:image URI through the sanitizer unchanged", async () => {
+    vi.mocked(fetchFileContent).mockResolvedValue({
+      content: `![embedded](${pngDataUri})`,
+      baseDir: "/repo",
+    });
+    renderViewer();
+    const img = await screen.findByRole("img", { name: "embedded" });
+    expect(img).toHaveAttribute("src", pngDataUri);
+  });
+
+  it("rewrites a relative image src to the raw API path", async () => {
+    vi.mocked(fetchFileContent).mockResolvedValue({
+      content: "![diagram](images/diagram.png)",
+      baseDir: "/repo",
+    });
+    renderViewer();
+    const img = await screen.findByRole("img", { name: "diagram" });
+    expect(img).toHaveAttribute(
+      "src",
+      "/_/api/groups/default/files/aaa11111/raw/images/diagram.png",
+    );
+  });
+});
+
 describe("MarkdownViewer relative links", () => {
   beforeEach(() => {
     vi.mocked(fetchFileContent).mockResolvedValue({
