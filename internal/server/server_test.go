@@ -2447,6 +2447,11 @@ func TestGroupsReturnsDeepCopies(t *testing.T) {
 	}
 
 	// (a) Mutating a returned FileEntry's fields must not affect internal state.
+	// Capture the expected values before mutating: entry aliases internal
+	// state, so comparing against entry after the mutation would be
+	// tautological if Groups() leaked shared pointers.
+	wantTitle := entry.Title
+	wantName := entry.Name
 	groups[0].Files[0].Title = "mutated-title"
 	groups[0].Files[0].Name = "mutated-name"
 
@@ -2454,11 +2459,11 @@ func TestGroupsReturnsDeepCopies(t *testing.T) {
 	if len(again) != 1 || len(again[0].Files) != 1 {
 		t.Fatalf("unexpected state after mutation: %+v", again)
 	}
-	if again[0].Files[0].Title != entry.Title {
-		t.Fatalf("internal Title mutated via returned copy: got %q, want %q", again[0].Files[0].Title, entry.Title)
+	if again[0].Files[0].Title != wantTitle {
+		t.Fatalf("internal Title mutated via returned copy: got %q, want %q", again[0].Files[0].Title, wantTitle)
 	}
-	if again[0].Files[0].Name != entry.Name {
-		t.Fatalf("internal Name mutated via returned copy: got %q, want %q", again[0].Files[0].Name, entry.Name)
+	if again[0].Files[0].Name != wantName {
+		t.Fatalf("internal Name mutated via returned copy: got %q, want %q", again[0].Files[0].Name, wantName)
 	}
 
 	// (b) The returned Files slice must have its own backing array: replacing
