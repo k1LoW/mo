@@ -383,9 +383,23 @@ func (s *State) Groups() []Group {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// Deep-copy each Group and its FileEntry pointers while holding the lock
+	// so callers (e.g. JSON encoding after the lock is released) never share
+	// state with in-place mutations such as notifyFileChangedByPath's Title
+	// updates or RemoveFilesByPath's slice compaction.
 	result := make([]Group, 0, len(s.groups))
 	for _, g := range s.groups {
-		result = append(result, *g)
+		var files []*FileEntry
+		if g.Files != nil {
+			files = make([]*FileEntry, len(g.Files))
+			for i, f := range g.Files {
+				fc := *f
+				files[i] = &fc
+			}
+		}
+		gc := *g
+		gc.Files = files
+		result = append(result, gc)
 	}
 	return result
 }
