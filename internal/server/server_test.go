@@ -2377,3 +2377,108 @@ func TestHandleFileRaw_PercentEncodedNonASCII(t *testing.T) {
 		t.Errorf("expected body to contain %q, got %q", "asset content", got)
 	}
 }
+
+// Regression test: Groups() must return deep copies so JSON encoding does
+// not race with Title updates from the file watcher.
+func TestGroupsRaceWithTitleUpdate(t *testing.T) {
+	s := newTestState(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "race.md")
+	if err := os.WriteFile(path, []byte("# title-0\n\nbody\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddFile(path, DefaultGroup); err != nil {
+		t.Fatal(err)
+	}
+
+	const iterations = 200
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Reader: mimics handleGroups / handleStatus — encode after the lock is released.
+	go func() {
+		defer wg.Done()
+		enc := json.NewEncoder(io.Discard)
+		for range iterations {
+			groups := s.Groups()
+			if err := enc.Encode(groups); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+
+	// Writer: mimics the fsnotify path — rewrite the H1 so Title always changes.
+	go func() {
+		defer wg.Done()
+		for i := range iterations {
+			content := fmt.Sprintf("# title-%d\n\nbody\n", i+1)
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Error(err)
+				return
+			}
+			s.notifyFileChangedByPath(path)
+		}
+	}()
+
+	wg.Wait()
+}
+
+// TestGroupsReturnsDeepCopies verifies that Groups() returns FileEntry copies
+// that are independent of internal state: mutating the returned FileEntry
+// values or the returned Files slice must not affect subsequent Groups() calls.
+func TestGroupsReturnsDeepCopies(t *testing.T) {
+	s := newTestState(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "deepcopy.md")
+	if err := os.WriteFile(path, []byte("# original-title\n\nbody\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := s.AddFile(path, DefaultGroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	groups := s.Groups()
+	if len(groups) != 1 || len(groups[0].Files) != 1 {
+		t.Fatalf("unexpected initial state: %+v", groups)
+	}
+
+	// (a) Mutating a returned FileEntry's fields must not affect internal state.
+	// Capture the expected values before mutating: entry aliases internal
+	// state, so comparing against entry after the mutation would be
+	// tautological if Groups() leaked shared pointers.
+	wantTitle := entry.Title
+	wantName := entry.Name
+	groups[0].Files[0].Title = "mutated-title"
+	groups[0].Files[0].Name = "mutated-name"
+
+	again := s.Groups()
+	if len(again) != 1 || len(again[0].Files) != 1 {
+		t.Fatalf("unexpected state after mutation: %+v", again)
+	}
+	if again[0].Files[0].Title != wantTitle {
+		t.Fatalf("internal Title mutated via returned copy: got %q, want %q", again[0].Files[0].Title, wantTitle)
+	}
+	if again[0].Files[0].Name != wantName {
+		t.Fatalf("internal Name mutated via returned copy: got %q, want %q", again[0].Files[0].Name, wantName)
+	}
+
+	// (b) The returned Files slice must have its own backing array: replacing
+	// an element in the returned slice must not affect internal state.
+	groups2 := s.Groups()
+	groups2[0].Files[0] = &FileEntry{ID: "injected", Name: "injected.md"}
+
+	final := s.Groups()
+	if len(final) != 1 || len(final[0].Files) != 1 {
+		t.Fatalf("unexpected state after slice element replacement: %+v", final)
+	}
+	if final[0].Files[0].ID == "injected" {
+		t.Fatal("internal Files backing array mutated via returned slice")
+	}
+	if final[0].Files[0].ID != entry.ID {
+		t.Fatalf("got file ID %q, want %q", final[0].Files[0].ID, entry.ID)
+	}
+}
