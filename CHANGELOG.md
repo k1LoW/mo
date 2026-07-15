@@ -1,5 +1,10 @@
 # Changelog
 
+## [v1.6.5](https://github.com/k1LoW/mo/compare/v1.6.4...v1.6.5) - 2026-07-15
+
+### Fix bug 🐛
+- Fix data race in State.Groups() by deep-copying FileEntry values by @kiakiraki in https://github.com/k1LoW/mo/pull/251
+
 ## [v1.6.4](https://github.com/k1LoW/mo/compare/v1.6.3...v1.6.4) - 2026-07-13
 
 ### Dependency Updates ⬆️
