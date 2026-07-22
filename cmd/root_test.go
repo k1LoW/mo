@@ -1017,6 +1017,55 @@ func TestAddToRunningServer_AllPostsFail(t *testing.T) {
 	}
 }
 
+// A pattern-only invocation must not report success when every pattern POST
+// fails on the winning server. Previously len(patterns) was added to the
+// counter unconditionally, defeating the "attempted > 0 && added == 0" guard.
+func TestAddToRunningServer_PatternsAllFail(t *testing.T) {
+	origNoOpen := noOpen
+	noOpen = true
+	t.Cleanup(func() { noOpen = origNoOpen })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /_/api/patterns", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "shutting down", http.StatusServiceUnavailable)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	status := &statusResponse{PID: 12345}
+	err := addToRunningServer(addr, status, nil, map[string][]string{"default": {"*.md"}}, nil)
+	if err == nil {
+		t.Fatal("expected error when every pattern POST fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to add any items") {
+		t.Fatalf("got error %q, want 'failed to add any items'", err.Error())
+	}
+}
+
+// A pattern that legitimately matches zero files must still count as added,
+// so the "added N item(s)" line does not misreport it as a failure.
+func TestAddToRunningServer_PatternWithZeroMatches(t *testing.T) {
+	origNoOpen := noOpen
+	noOpen = true
+	t.Cleanup(func() { noOpen = origNoOpen })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /_/api/patterns", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(server.AddPatternResponse{Files: nil}) //nolint:errcheck
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	status := &statusResponse{PID: 12345}
+	err := addToRunningServer(addr, status, nil, map[string][]string{"default": {"*.md"}}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestIsLoopbackBind(t *testing.T) {
 	tests := []struct {
 		name string

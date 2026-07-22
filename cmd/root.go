@@ -409,8 +409,10 @@ func run(cmd *cobra.Command, args []string) (retErr error) {
 			isNewGroup := !slices.Contains(result.groups, target)
 
 			var deeplinks []deeplinkEntry
-			deeplinks = append(deeplinks, postFiles(result.client, addr, target, files)...)
-			deeplinks = append(deeplinks, postPatterns(result.client, addr, target, patterns)...)
+			fileEntries := postFiles(result.client, addr, target, files)
+			deeplinks = append(deeplinks, fileEntries...)
+			patternEntries, patternsAdded := postPatterns(result.client, addr, target, patterns)
+			deeplinks = append(deeplinks, patternEntries...)
 
 			var stdinUploadErr error
 			if stdinData != nil {
@@ -427,7 +429,10 @@ func run(cmd *cobra.Command, args []string) (retErr error) {
 				return stdinUploadErr
 			}
 
-			added := len(files) + len(patterns)
+			// Count only what was actually accepted by the running server so
+			// the "added N item(s)" line does not overstate on partial POST
+			// failures. postFiles appends exactly one entry per accepted file.
+			added := len(fileEntries) + patternsAdded
 			if stdinData != nil && stdinUploadErr == nil {
 				added++
 			}
@@ -777,8 +782,14 @@ func postFiles(client *http.Client, addr, group string, files []string) []deepli
 	return entries
 }
 
-func postPatterns(client *http.Client, addr, group string, patterns []string) []deeplinkEntry {
+// postPatterns registers each pattern with the running server. It returns the
+// deeplink entries for every file matched by the successful registrations,
+// plus the number of patterns that were actually registered (which is not
+// derivable from len(entries) because a valid pattern may legitimately match
+// zero files).
+func postPatterns(client *http.Client, addr, group string, patterns []string) ([]deeplinkEntry, int) {
 	var entries []deeplinkEntry
+	added := 0
 	for _, pat := range patterns {
 		body, err := json.Marshal(map[string]string{
 			"pattern": pat,
@@ -809,6 +820,7 @@ func postPatterns(client *http.Client, addr, group string, patterns []string) []
 			continue
 		}
 		resp.Body.Close()
+		added++
 		for _, f := range patResp.Files {
 			entries = append(entries, deeplinkEntry{
 				URL:  buildDeeplink(addr, group, f.ID),
@@ -816,7 +828,7 @@ func postPatterns(client *http.Client, addr, group string, patterns []string) []
 			})
 		}
 	}
-	return entries
+	return entries, added
 }
 
 type deeplinkEntry struct {
@@ -1527,11 +1539,10 @@ func addToRunningServer(addr string, status *statusResponse, filesByGroup map[st
 		added += len(entries)
 	}
 	for group, patterns := range patternsByGroup {
-		// A pattern may legitimately match zero files, so count patterns as
-		// added rather than by returned entries.
 		attempted += len(patterns)
-		deeplinks = append(deeplinks, postPatterns(client, addr, group, patterns)...)
-		added += len(patterns)
+		entries, patternsAdded := postPatterns(client, addr, group, patterns)
+		deeplinks = append(deeplinks, entries...)
+		added += patternsAdded
 	}
 	for _, uf := range uploadedFiles {
 		attempted++
