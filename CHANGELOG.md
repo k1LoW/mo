@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.6.6](https://github.com/k1LoW/mo/compare/v1.6.5...v1.6.6) - 2026-07-22
+
+### Fix bug 🐛
+- Fix background start falsely reporting success when the server fails to start by @kiakiraki in https://github.com/k1LoW/mo/pull/255
+- fix(cmd): count only successful pattern POSTs when adding to a running server by @k1LoW in https://github.com/k1LoW/mo/pull/257
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/253
+- chore(deps-dev): bump the dependencies group in /internal/frontend with 5 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/254
+
 ## [v1.6.5](https://github.com/k1LoW/mo/compare/v1.6.4...v1.6.5) - 2026-07-15
 
 ### Fix bug 🐛
