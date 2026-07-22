@@ -3,10 +3,14 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -839,6 +843,178 @@ func newFakeMoServer(t *testing.T, statusHandler http.HandlerFunc) *httptest.Ser
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestWaitForReady_Success(t *testing.T) {
+	pid := os.Getpid()
+	srv := newFakeMoServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"version": "test", "pid": pid, "groups": []any{}}) //nolint:errcheck
+	})
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	status, err := waitForReady(addr, pid, 2*time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status == nil {
+		t.Fatal("expected non-nil status")
+	}
+	if status.PID != pid {
+		t.Fatalf("got PID %d, want %d", status.PID, pid)
+	}
+}
+
+func TestWaitForReady_PIDMismatch(t *testing.T) {
+	childPID := os.Getpid()
+	otherPID := childPID + 1
+	srv := newFakeMoServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"version": "test", "pid": otherPID, "groups": []any{}}) //nolint:errcheck
+	})
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	status, err := waitForReady(addr, childPID, 2*time.Second)
+	if !errors.Is(err, errServerConflict) {
+		t.Fatalf("got error %v, want errServerConflict", err)
+	}
+	if status == nil {
+		t.Fatal("expected non-nil status")
+	}
+}
+
+func TestWaitForReady_NonMoServer(t *testing.T) {
+	childPID := os.Getpid()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /_/api/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<html>not mo</html>")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	_, err := waitForReady(addr, childPID, 300*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "did not become ready") {
+		t.Fatalf("got error %q, want 'did not become ready'", err.Error())
+	}
+}
+
+func TestWaitForReady_ChildExited(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires the Unix 'true' binary")
+	}
+	// Start a child without waiting: it exits immediately but stays a zombie,
+	// so its pid cannot be reused and processAlive's non-blocking reap is
+	// what detects the death (same as a real spawned server child).
+	exited := exec.Command("true")
+	if err := exited.Start(); err != nil {
+		t.Fatalf("failed to start helper process: %v", err)
+	}
+	deadPID := exited.Process.Pid
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /_/api/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<html>not mo</html>")
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	start := time.Now()
+	_, err := waitForReady(addr, deadPID, 5*time.Second)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exited unexpectedly") {
+		t.Fatalf("got error %q, want 'exited unexpectedly'", err.Error())
+	}
+	// Death detection plus the deadChildGrace window should still finish
+	// well before the 5s timeout.
+	if elapsed > 3*time.Second {
+		t.Fatalf("waitForReady took %s, want fail-fast (<3s)", elapsed)
+	}
+}
+
+func TestProcessAlive_ZombieChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("zombie processes are a Unix concept")
+	}
+	// Start a child and do not Wait: after exit it stays a zombie, for which
+	// kill(pid, 0) still succeeds. processAlive must detect it as dead.
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start helper process: %v", err)
+	}
+	pid := cmd.Process.Pid
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !processAlive(pid) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("processAlive still reports true for exited (zombie) child after 2s")
+}
+
+func TestAddToRunningServer(t *testing.T) {
+	origNoOpen := noOpen
+	noOpen = true
+	t.Cleanup(func() { noOpen = origNoOpen })
+
+	var postCount int
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /_/api/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"version": "test", "pid": 12345, "groups": []any{}}) //nolint:errcheck
+	})
+	mux.HandleFunc("POST /_/api/groups/{group}/files", func(w http.ResponseWriter, r *http.Request) {
+		postCount++
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(server.FileEntry{ID: "abc12345", Path: "/tmp/x.md", Name: "x.md"}) //nolint:errcheck
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	status := &statusResponse{PID: 12345}
+	err := addToRunningServer(addr, status, map[string][]string{"default": {"/tmp/x.md"}}, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if postCount != 1 {
+		t.Fatalf("got %d POSTs, want 1", postCount)
+	}
+}
+
+func TestAddToRunningServer_AllPostsFail(t *testing.T) {
+	origNoOpen := noOpen
+	noOpen = true
+	t.Cleanup(func() { noOpen = origNoOpen })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /_/api/groups/{group}/files", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "shutting down", http.StatusServiceUnavailable)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	status := &statusResponse{PID: 12345}
+	err := addToRunningServer(addr, status, map[string][]string{"default": {"/tmp/x.md"}}, nil, nil)
+	if err == nil {
+		t.Fatal("expected error when every POST fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to add any items") {
+		t.Fatalf("got error %q, want 'failed to add any items'", err.Error())
+	}
 }
 
 func TestIsLoopbackBind(t *testing.T) {

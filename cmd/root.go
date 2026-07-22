@@ -42,10 +42,18 @@ const (
 	probeTimeoutFast = 500 * time.Millisecond
 	// probeTimeoutDefault is used when the server is expected to be running.
 	probeTimeoutDefault = 2 * time.Second
+	// deadChildGrace is how long waitForReady keeps polling after the spawned
+	// child dies, giving a race-winning server a chance to respond before the
+	// failure is reported.
+	deadChildGrace = 1 * time.Second
 
 	markdownGlob          = "*.md"
 	markdownGlobRecursive = "**/*.md"
 )
+
+// errServerConflict is returned by waitForReady when a mo server other than
+// the spawned child owns the port (e.g. lost a concurrent startup race).
+var errServerConflict = errors.New("another mo server is already running")
 
 var (
 	target                       string
@@ -203,13 +211,23 @@ func init() {
 	rootCmd.Flags().BoolVar(&dangerouslyAllowRemoteAccess, "dangerously-allow-remote-access", false, "Allow remote access without authentication. Recommended only for trusted networks.")
 }
 
-func run(cmd *cobra.Command, args []string) error {
+func run(cmd *cobra.Command, args []string) (retErr error) {
 	if !foreground || restore != "" {
 		logCleanup, err := logfile.Setup(port)
 		if err != nil {
 			slog.Warn("failed to setup log file, using stderr", "error", err)
 		} else {
 			defer logCleanup()
+			// Cobra prints RunE errors to stderr, which is /dev/null for
+			// background children. Record fatal errors in the log file too
+			// (registered after logCleanup so it runs before the file is
+			// closed). Skipped when slog still writes to stderr, where cobra
+			// prints the error anyway.
+			defer func() {
+				if retErr != nil {
+					slog.Error("mo exited with error", "error", retErr)
+				}
+			}()
 		}
 	}
 
@@ -1368,6 +1386,9 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
+		// The CloseAllSubscribers cleanup below is not yet registered; close the
+		// watcher here so watchLoop exits and donegroup does not hit its 5s timeout.
+		state.CloseAllSubscribers()
 		return fmt.Errorf("cannot listen on %s: %w", addr, err)
 	}
 
@@ -1453,9 +1474,21 @@ func startBackground(addr string, filesByGroup map[string][]string, patternsByGr
 		slog.Warn("failed to release process", "error", err)
 	}
 
-	status, err := waitForReady(addr, 10*time.Second)
+	status, err := waitForReady(addr, pid, 10*time.Second)
 	if err != nil {
-		return fmt.Errorf("%w (pid %d)", err, pid)
+		// Remove the restore file only once the child is confirmed dead: a
+		// slow-but-alive child may not have consumed it yet, and an alive
+		// child removes it itself after loading.
+		if !processAlive(pid) {
+			os.Remove(restoreFile) //nolint:errcheck // best-effort; the child may have consumed it already
+		}
+		if errors.Is(err, errServerConflict) {
+			// Lost a concurrent startup race: another mo server owns the
+			// port. Add our files to the winner instead of reporting a
+			// false success.
+			return addToRunningServer(addr, status, filesByGroup, patternsByGroup, uploadedFiles)
+		}
+		return fmt.Errorf("%w (spawned pid %d)", err, pid)
 	}
 
 	var deeplinks []deeplinkEntry
@@ -1478,6 +1511,57 @@ func startBackground(addr string, filesByGroup map[string][]string, patternsByGr
 	return nil
 }
 
+// addToRunningServer posts files, patterns, and uploaded files to a mo server
+// that is already running on addr. Used when a background start loses the
+// port to another mo instance (concurrent startup race).
+func addToRunningServer(addr string, status *statusResponse, filesByGroup map[string][]string, patternsByGroup map[string][]string, uploadedFiles []server.UploadedFileData) error {
+	slog.Info("port already served by another mo instance; adding to it", "addr", addr, "pid", status.PID)
+	client := &http.Client{Timeout: probeTimeoutDefault}
+	var deeplinks []deeplinkEntry
+	added := 0
+	attempted := 0
+	for group, files := range filesByGroup {
+		attempted += len(files)
+		entries := postFiles(client, addr, group, files)
+		deeplinks = append(deeplinks, entries...)
+		added += len(entries)
+	}
+	for group, patterns := range patternsByGroup {
+		// A pattern may legitimately match zero files, so count patterns as
+		// added rather than by returned entries.
+		attempted += len(patterns)
+		deeplinks = append(deeplinks, postPatterns(client, addr, group, patterns)...)
+		added += len(patterns)
+	}
+	for _, uf := range uploadedFiles {
+		attempted++
+		entry, err := postUploadedFile(client, addr, uf.Group, uf.Name, uf.Content)
+		if err != nil {
+			slog.Warn("failed to upload file", "name", uf.Name, "error", err)
+			continue
+		}
+		deeplinks = append(deeplinks, entry)
+		added++
+	}
+	if attempted > 0 && added == 0 {
+		return fmt.Errorf("failed to add any items to the mo server at http://%s (check log file for details)", addr)
+	}
+	emitServeOutput(addr, deeplinks, true)
+	fmt.Fprintf(os.Stderr, "mo: another mo server is already running at http://%s (pid %d); added %d item(s) to it\n", addr, status.PID, added)
+
+	isNewGroup := true
+	for _, g := range status.Groups {
+		if g.Name == target {
+			isNewGroup = false
+			break
+		}
+	}
+	if isNewGroup || open {
+		openBrowser(addr)
+	}
+	return nil
+}
+
 func openBrowser(addr string) {
 	if noOpen {
 		return
@@ -1491,26 +1575,45 @@ func openBrowser(addr string) {
 	}
 }
 
-func waitForReady(addr string, timeout time.Duration) (*statusResponse, error) {
+// waitForReady polls addr until a mo server responds as ready, the spawned
+// child (childPID) dies, or timeout elapses.
+//
+// If a mo server responds but its PID does not match childPID, the spawned
+// child lost a concurrent startup race for the port; errServerConflict is
+// returned along with the winning server's status.
+func waitForReady(addr string, childPID int, timeout time.Duration) (*statusResponse, error) {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	deadline := time.Now().Add(timeout)
 
+	var childDeadSince time.Time
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(fmt.Sprintf("http://%s/_/api/status", addr))
 		if err == nil {
 			if resp.StatusCode == http.StatusOK {
 				var status statusResponse
-				if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+				if decErr := json.NewDecoder(resp.Body).Decode(&status); decErr == nil && status.Version != "" {
 					resp.Body.Close()
-					return nil, nil //nolint:nilerr // decode failure is non-fatal; server is ready
+					if childPID > 0 && status.PID != childPID {
+						return &status, errServerConflict
+					}
+					return &status, nil
 				}
-				resp.Body.Close()
-				return &status, nil
 			}
 			resp.Body.Close()
 		}
+
+		// Not ready yet: if the spawned child has died, keep polling briefly —
+		// in a lost startup race the winner may not be serving yet — then fail
+		// fast instead of waiting out the full timeout.
+		if childPID > 0 && childDeadSince.IsZero() && !processAlive(childPID) {
+			childDeadSince = time.Now()
+		}
+		if !childDeadSince.IsZero() && time.Since(childDeadSince) >= deadChildGrace {
+			return nil, errors.New("server process exited unexpectedly; the port may be in use by another server (check log file for details)")
+		}
+
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	return nil, fmt.Errorf("server did not become ready within %s (check log file for details)", timeout)
+	return nil, fmt.Errorf("server did not become ready within %s; the port may be in use by another (non-mo) server (check log file for details)", timeout)
 }
