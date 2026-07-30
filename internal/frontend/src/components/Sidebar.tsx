@@ -19,6 +19,8 @@ import { removeFile, moveFile } from "../hooks/useApi";
 import { buildFileUrl } from "../utils/groups";
 import { isPlainLeftClick } from "../utils/linkClick";
 import { escapeRegExp } from "../utils/regex";
+import { fileRowClass, handleFileRowClick } from "../utils/fileRow";
+import type { PaneTarget } from "../utils/panes";
 import type { ViewMode } from "./ViewModeToggle";
 import { TreeView } from "./TreeView";
 import { FileContextMenu } from "./FileContextMenu";
@@ -58,13 +60,15 @@ function renderHighlightedText(text: string, query: string) {
 interface FileItemProps {
   file: FileEntry;
   activeGroup: string;
-  isActive: boolean;
+  isOpen: boolean;
+  isFocused: boolean;
   showTitle: boolean;
   menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: string) => void;
+  onFileSelect: (id: string, target: PaneTarget) => void;
   onMenuToggle: (id: string) => void;
   onOpenInNewTab: (id: string) => void;
+  onOpenInNewPane?: (id: string) => void;
   onCopyPath: (path: string) => void;
   onCopyLink: (id: string) => void;
   onMoveToGroup: (id: string, group: string) => void;
@@ -75,13 +79,15 @@ interface FileItemProps {
 function FileItem({
   file,
   activeGroup,
-  isActive,
+  isOpen,
+  isFocused,
   showTitle,
   menuOpenId,
   otherGroups,
   onFileSelect,
   onMenuToggle,
   onOpenInNewTab,
+  onOpenInNewPane,
   onCopyPath,
   onCopyLink,
   onMoveToGroup,
@@ -92,18 +98,10 @@ function FileItem({
     <div className="relative group/file">
       <a
         href={buildFileUrl(activeGroup, file.id)}
-        className={`flex items-center gap-2 w-full px-3 py-2 border-none cursor-pointer text-left text-sm no-underline transition-colors duration-150 ${
-          isActive
-            ? "bg-gh-bg-active text-gh-text font-semibold"
-            : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
-        }`}
-        onClick={(e) => {
-          if (!isPlainLeftClick(e)) return;
-          e.preventDefault();
-          onFileSelect(file.id);
-        }}
+        className={fileRowClass(isOpen, isFocused)}
+        onClick={(e) => handleFileRowClick(e, file.id, onFileSelect)}
         title={file.uploaded ? file.name : file.path}
-        aria-current={isActive ? "page" : undefined}
+        aria-current={isFocused ? "page" : undefined}
       >
         <FileIcon uploaded={file.uploaded} />
         <span className="overflow-hidden text-ellipsis whitespace-nowrap pr-6">
@@ -116,6 +114,7 @@ function FileItem({
         otherGroups={otherGroups}
         onToggle={onMenuToggle}
         onOpenInNewTab={onOpenInNewTab}
+        onOpenInNewPane={onOpenInNewPane}
         onCopyPath={onCopyPath}
         onCopyLink={onCopyLink}
         onMoveToGroup={onMoveToGroup}
@@ -147,8 +146,13 @@ function SortableFileItem(props: FileItemProps) {
 interface SidebarProps {
   groups: Group[];
   activeGroup: string;
+  /** File in the focused pane. */
   activeFileId: string | null;
-  onFileSelect: (id: string) => void;
+  /** Files open in any pane. Defaults to just the focused one. */
+  openFileIds?: ReadonlySet<string>;
+  /** False once the layout is full, which hides the new-pane affordances. */
+  canOpenNewPane?: boolean;
+  onFileSelect: (id: string, target: PaneTarget) => void;
   onFilesReorder: (groupName: string, fileIds: string[]) => void;
   viewMode: ViewMode;
   showTitle: boolean;
@@ -163,6 +167,8 @@ export function Sidebar({
   groups,
   activeGroup,
   activeFileId,
+  openFileIds,
+  canOpenNewPane = true,
   onFileSelect,
   onFilesReorder,
   viewMode,
@@ -178,6 +184,13 @@ export function Sidebar({
     return currentGroup?.files ?? [];
   }, [groups, activeGroup]);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Without split panes the focused file is the only open one, so callers that
+  // predate panes (and tests) can keep passing activeFileId alone.
+  const openIds = useMemo(
+    () => openFileIds ?? new Set(activeFileId != null ? [activeFileId] : []),
+    [openFileIds, activeFileId],
+  );
 
   const searchOpen = searchQuery != null;
   const isSearching = searchQuery != null && searchQuery.length > 0;
@@ -276,6 +289,14 @@ export function Sidebar({
       window.open(buildFileUrl(activeGroup, id), "_blank");
     },
     [activeGroup],
+  );
+
+  const handleOpenInNewPane = useCallback(
+    (id: string) => {
+      setMenuOpenId(null);
+      onFileSelect(id, "new-pane");
+    },
+    [onFileSelect],
   );
 
   const otherGroups = useMemo(() => {
@@ -425,13 +446,15 @@ export function Sidebar({
                       key={f.id}
                       file={f}
                       activeGroup={activeGroup}
-                      isActive={f.id === activeFileId}
+                      isOpen={openIds.has(f.id)}
+                      isFocused={f.id === activeFileId}
                       showTitle={showTitle}
                       menuOpenId={menuOpenId}
                       otherGroups={otherGroups}
                       onFileSelect={onFileSelect}
                       onMenuToggle={handleMenuToggle}
                       onOpenInNewTab={handleOpenInNewTab}
+                      onOpenInNewPane={canOpenNewPane ? handleOpenInNewPane : undefined}
                       onCopyPath={handleCopyPath}
                       onCopyLink={handleCopyLink}
                       onMoveToGroup={handleMoveToGroup}
@@ -450,12 +473,14 @@ export function Sidebar({
             files={files}
             activeGroup={activeGroup}
             activeFileId={activeFileId}
+            openFileIds={openIds}
             showTitle={showTitle}
             menuOpenId={menuOpenId}
             otherGroups={otherGroups}
             onFileSelect={onFileSelect}
             onMenuToggle={handleMenuToggle}
             onOpenInNewTab={handleOpenInNewTab}
+            onOpenInNewPane={canOpenNewPane ? handleOpenInNewPane : undefined}
             onCopyPath={handleCopyPath}
             onCopyLink={handleCopyLink}
             onMoveToGroup={handleMoveToGroup}
@@ -474,13 +499,15 @@ export function Sidebar({
                   key={f.id}
                   file={f}
                   activeGroup={activeGroup}
-                  isActive={f.id === activeFileId}
+                  isOpen={openIds.has(f.id)}
+                  isFocused={f.id === activeFileId}
                   showTitle={showTitle}
                   menuOpenId={menuOpenId}
                   otherGroups={otherGroups}
                   onFileSelect={onFileSelect}
                   onMenuToggle={handleMenuToggle}
                   onOpenInNewTab={handleOpenInNewTab}
+                  onOpenInNewPane={canOpenNewPane ? handleOpenInNewPane : undefined}
                   onCopyPath={handleCopyPath}
                   onCopyLink={handleCopyLink}
                   onMoveToGroup={handleMoveToGroup}

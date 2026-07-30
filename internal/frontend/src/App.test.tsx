@@ -208,6 +208,138 @@ describe("App URL sync", () => {
     });
   });
 
+  it("hydrates a split layout from ?files= on initial load", async () => {
+    setUrl("/?files=bbb22222,aaa11111&focus=1");
+    render(<App />);
+
+    await waitFor(() => {
+      const viewers = screen.getAllByTestId("viewer");
+      expect(viewers.map((v) => v.textContent)).toEqual(["bbb22222", "aaa11111"]);
+    });
+    expect(window.location.search).toBe("?files=bbb22222,aaa11111&focus=1");
+  });
+
+  it("drops panes whose file is not in the group and rewrites the URL", async () => {
+    setUrl("/?files=aaa11111,zzz99999");
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("viewer")).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(window.location.search).toBe("?file=aaa11111");
+    });
+  });
+
+  it("adds a pane on Alt+click and records it in the URL", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("GUIDE.md");
+    await waitFor(() => {
+      expect(window.location.search).toBe("?file=aaa11111");
+    });
+
+    await user.keyboard("[AltLeft>]");
+    await user.click(screen.getByText("GUIDE.md"));
+    await user.keyboard("[/AltLeft]");
+
+    await waitFor(() => {
+      expect(window.location.search).toBe("?files=aaa11111,bbb22222&focus=1");
+    });
+    expect(screen.getAllByTestId("viewer").map((v) => v.textContent)).toEqual([
+      "aaa11111",
+      "bbb22222",
+    ]);
+  });
+
+  it("replaces the focused pane on a plain click instead of adding one", async () => {
+    const user = userEvent.setup();
+    setUrl("/?files=aaa11111,bbb22222&focus=1");
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("viewer")).toHaveLength(2);
+    });
+
+    // The second pane is focused, so this swaps its file and leaves pane 0 alone.
+    await user.click(screen.getByText("README.md"));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("viewer").map((v) => v.textContent)).toEqual([
+        "aaa11111",
+        "aaa11111",
+      ]);
+    });
+  });
+
+  it("restores a split layout via popstate", async () => {
+    render(<App />);
+
+    await screen.findByText("README.md");
+    await waitFor(() => {
+      expect(window.location.search).toBe("?file=aaa11111");
+    });
+
+    act(() => {
+      window.history.replaceState(null, "", "/?files=aaa11111,bbb22222");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("viewer").map((v) => v.textContent)).toEqual([
+        "aaa11111",
+        "bbb22222",
+      ]);
+    });
+    expect(window.location.search).toBe("?files=aaa11111,bbb22222");
+  });
+
+  it("offers the scroll sync toggle only in split view", async () => {
+    setUrl("/?file=aaa11111");
+    const single = render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("viewer")).toHaveLength(1);
+    });
+    expect(screen.queryByLabelText("Sync scrolling")).toBeNull();
+    single.unmount();
+
+    setUrl("/?files=aaa11111,bbb22222");
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("viewer")).toHaveLength(2);
+    });
+    expect(screen.getByLabelText("Sync scrolling")).toBeInTheDocument();
+  });
+
+  it("collapses to the focused pane on a narrow window and keeps the rest reachable", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("max-width"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+
+    setUrl("/?files=aaa11111,bbb22222&focus=1");
+    render(<App />);
+
+    await waitFor(() => {
+      const viewers = screen.getAllByTestId("viewer");
+      expect(viewers).toHaveLength(1);
+      expect(viewers[0]).toHaveTextContent("bbb22222");
+    });
+
+    // The layout itself is untouched, so the navigator still reports both panes.
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Previous pane"));
+    await waitFor(() => {
+      expect(screen.getAllByTestId("viewer")[0]).toHaveTextContent("aaa11111");
+    });
+    expect(window.location.search).toBe("?files=aaa11111,bbb22222");
+  });
+
   it("follows back/forward navigation via popstate", async () => {
     const user = userEvent.setup();
     render(<App />);

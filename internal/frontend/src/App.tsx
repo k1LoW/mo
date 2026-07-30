@@ -1,24 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
-import { MarkdownViewer } from "./components/MarkdownViewer";
+import { Pane, type FocusedToc } from "./components/Pane";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { FontSizeToggle, type FontSize } from "./components/FontSizeToggle";
 import { WidthToggle } from "./components/WidthToggle";
 import { GroupDropdown } from "./components/GroupDropdown";
 import { ViewModeToggle, type ViewMode } from "./components/ViewModeToggle";
 import { SearchToggle } from "./components/SearchToggle";
+import { ScrollSyncToggle } from "./components/ScrollSyncToggle";
+import { PaneNavigator } from "./components/PaneNavigator";
 import { TitleToggle } from "./components/TitleToggle";
 import { RestartButton } from "./components/RestartButton";
 import { DropOverlay } from "./components/DropOverlay";
 import { ZoomModal } from "./components/ZoomModal";
 import type { ZoomContent } from "./components/ZoomModal";
 import { TocPanel } from "./components/TocPanel";
-import type { TocHeading } from "./components/TocPanel";
 import { EmptyGroupMessage } from "./components/EmptyGroupMessage";
 import { useSSE } from "./hooks/useSSE";
 import { useFileDrop } from "./hooks/useFileDrop";
-import { useActiveHeading } from "./hooks/useActiveHeading";
-import { useScrollRestoration, SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
+import { usePanes } from "./hooks/usePanes";
+import { usePaneWidths } from "./hooks/usePaneWidths";
+import { useScrollSync } from "./hooks/useScrollSync";
+import { useIsNarrow } from "./hooks/useIsNarrow";
+import { SCROLL_SESSION_KEY } from "./hooks/useScrollRestoration";
 import type { FileEntry, Group, SearchResult } from "./hooks/useApi";
 import {
   fetchGroups,
@@ -30,17 +34,27 @@ import {
 import {
   allFileIds,
   parseGroupFromPath,
-  parseFileIdFromSearch,
   parseRelativeOpenFromSearch,
   groupToPath,
-  buildFileUrl,
 } from "./utils/groups";
+import {
+  buildPanesUrl,
+  EMPTY_PANES,
+  focusedFileId as focusedFileIdOf,
+  MAX_PANES,
+  parsePanesFromSearch,
+  reconcilePanes,
+  setPaneFile,
+  type PaneState,
+  type PaneTarget,
+} from "./utils/panes";
 import { isMarkdownFile } from "./utils/filetype";
 import { formatFileLabel } from "./utils/fileLabel";
 
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 const WIDTH_STORAGE_KEY = "mo-layout-width";
 const SHOW_TITLE_STORAGE_KEY = "mo-sidebar-show-title";
+export const SCROLL_SYNC_STORAGE_KEY = "mo-scroll-sync";
 export const FONT_SIZE_STORAGE_KEY = "mo-font-size";
 export const TOC_OPEN_STORAGE_KEY = "mo-toc-open";
 
@@ -54,6 +68,14 @@ export function getInitialFontSize(): FontSize {
     /* ignore */
   }
   return "medium";
+}
+
+export function getInitialScrollSync(): boolean {
+  try {
+    return localStorage.getItem(SCROLL_SYNC_STORAGE_KEY) === "on";
+  } catch {
+    return false;
+  }
 }
 
 export function getInitialTocOpenMap(): Record<string, boolean> {
@@ -87,16 +109,49 @@ export function isTocOpenForFile(
   return map[fileId] === true;
 }
 
+/**
+ * The layout the URL (or a pre-reload session) asks for, before the group's file
+ * list is known. Consumed once the groups arrive.
+ */
+export function getInitialPanes(): PaneState | null {
+  const fromUrl = parsePanesFromSearch(window.location.search);
+  if (fromUrl) return fromUrl;
+  // Restore the active file from the scroll context saved before a reload.
+  try {
+    const stored = sessionStorage.getItem(SCROLL_SESSION_KEY);
+    if (stored) {
+      const ctx = JSON.parse(stored);
+      if (ctx.url === window.location.pathname && ctx.fileId) {
+        return { fileIds: [ctx.fileId], focusIndex: 0 };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 export function App() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [activeGroup, setActiveGroup] = useState<string>(
     () => parseGroupFromPath(window.location.pathname) || "default",
   );
-  const [activeFileId, setActiveFileId] = useState<string | null>(null);
+  const { panes, setPanes, openInFocusedPane, openInNewPane, closePaneAt, focusPaneAt } = usePanes(
+    activeGroup,
+    EMPTY_PANES,
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [scrollSync, setScrollSync] = useState<boolean>(getInitialScrollSync);
   const [tocOpenMap, setTocOpenMap] = useState<Record<string, boolean>>(getInitialTocOpenMap);
-  const [headings, setHeadings] = useState<TocHeading[]>([]);
-  const [contentRevision, setContentRevision] = useState(0);
+  // Only the focused pane feeds the shared ToC panel on the right.
+  const [focusedToc, setFocusedToc] = useState<FocusedToc>({
+    headings: [],
+    activeHeadingId: null,
+    scrollToHeading: () => {},
+  });
+  // Per-file so a file-changed event reloads every pane showing that file, not
+  // just the focused one.
+  const [revisions, setRevisions] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -128,22 +183,7 @@ export function App() {
   });
   const [fontSize, setFontSize] = useState<FontSize>(getInitialFontSize);
   const knownFileIds = useRef<Set<string>>(new Set());
-  const [initialFileId, setInitialFileId] = useState<string | null>(() => {
-    const fromUrl = parseFileIdFromSearch(window.location.search);
-    if (fromUrl) return fromUrl;
-    // Restore active file from scroll context saved before reload
-    try {
-      const stored = sessionStorage.getItem(SCROLL_SESSION_KEY);
-      if (stored) {
-        const ctx = JSON.parse(stored);
-        if (ctx.url === window.location.pathname && ctx.fileId) return ctx.fileId;
-      }
-    } catch {
-      /* ignore */
-    }
-    return null;
-  });
-  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [pendingPanes, setPendingPanes] = useState<PaneState | null>(getInitialPanes);
   const [zoomContent, setZoomContent] = useState<ZoomContent | null>(null);
 
   // Track previous values for render-time state adjustment
@@ -160,7 +200,7 @@ export function App() {
     setSidebarOpen(group != null && group.files.length >= 2);
 
     if (groups.length === 0) {
-      setActiveFileId(null);
+      setPanes(EMPTY_PANES);
     } else if (!group) {
       const sortedGroups = [...groups].sort((a, b) => {
         if (a.name === "default") return 1;
@@ -169,17 +209,23 @@ export function App() {
       });
       setActiveGroup(sortedGroups[0].name);
     } else if (group.files.length === 0) {
-      setActiveFileId(null);
-    } else if (initialFileId != null) {
-      setInitialFileId(null);
-      setActiveFileId(
-        group.files.some((f) => f.id === initialFileId) ? initialFileId : group.files[0].id,
-      );
+      setPanes(EMPTY_PANES);
     } else {
-      setActiveFileId((prev) => {
-        if (group.files.some((f) => f.id === prev)) return prev;
-        return group.files[0].id;
-      });
+      const availableIds = new Set(group.files.map((f) => f.id));
+      const firstFilePane: PaneState = { fileIds: [group.files[0].id], focusIndex: 0 };
+
+      if (pendingPanes != null) {
+        setPendingPanes(null);
+        const requested = reconcilePanes(pendingPanes, availableIds);
+        setPanes(requested.fileIds.length > 0 ? requested : firstFilePane);
+      } else {
+        // reconcilePanes returns its input untouched when every pane survives,
+        // which is what keeps this render-time adjustment from looping.
+        setPanes((prev) => {
+          const reconciled = reconcilePanes(prev, availableIds);
+          return reconciled.fileIds.length > 0 ? reconciled : firstFilePane;
+        });
+      }
     }
   }
 
@@ -199,14 +245,16 @@ export function App() {
       setGroups(data);
 
       if (added.length > 0 && !wasEmpty) {
-        // Only auto-select if the new file belongs to the current active group
+        // Only auto-select if the new file belongs to the current active group.
+        // It lands in the focused pane so the other columns keep their content.
         setActiveGroup((currentGroup) => {
           const group = data.find((g) => g.name === currentGroup);
           if (group) {
             const addedSet = new Set(added);
             const matched = group.files.filter((f) => addedSet.has(f.id));
             if (matched.length > 0) {
-              setActiveFileId(matched[matched.length - 1].id);
+              const newest = matched[matched.length - 1].id;
+              setPanes((prev) => setPaneFile(prev, prev.focusIndex, newest));
             }
           }
           return currentGroup;
@@ -215,7 +263,7 @@ export function App() {
     } catch {
       // server may not be ready yet
     }
-  }, []);
+  }, [setPanes]);
 
   // Initial data fetch (setState inside .then() is async, not flagged by linter)
   useEffect(() => {
@@ -241,8 +289,9 @@ export function App() {
     openRelativeFile(group, rel.from, rel.open)
       .then((entry) => {
         relativeOpen.current = null;
-        setInitialFileId(entry.id);
-        window.history.replaceState(null, "", buildFileUrl(group, entry.id));
+        const opened: PaneState = { fileIds: [entry.id], focusIndex: 0 };
+        setPendingPanes(opened);
+        window.history.replaceState(null, "", buildPanesUrl(group, opened));
         loadGroups();
       })
       .catch(() => {
@@ -257,23 +306,22 @@ export function App() {
   useEffect(() => {
     // A relative-open resolve is in flight; it owns the URL until it settles.
     if (relativeOpen.current != null) return;
-    // initialFileId hasn't been consumed yet — keep the URL as the user landed.
-    if (initialFileId != null) return;
-    const expectedUrl = activeFileId
-      ? buildFileUrl(activeGroup, activeFileId)
-      : groupToPath(activeGroup);
+    // The requested layout hasn't been consumed yet — keep the URL as the user
+    // landed on it.
+    if (pendingPanes != null) return;
+    const expectedUrl = buildPanesUrl(activeGroup, panes);
     if (window.location.pathname + window.location.search === expectedUrl) return;
     window.history.replaceState(null, "", expectedUrl);
-  }, [activeGroup, activeFileId, initialFileId]);
+  }, [activeGroup, panes, pendingPanes]);
 
   useEffect(() => {
     const handlePopState = () => {
       setActiveGroup(parseGroupFromPath(window.location.pathname));
-      setActiveFileId(parseFileIdFromSearch(window.location.search));
+      setPanes(parsePanesFromSearch(window.location.search) ?? EMPTY_PANES);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [setPanes]);
 
   useEffect(() => {
     if (!searchQuery?.trim()) {
@@ -311,21 +359,52 @@ export function App() {
     () => groups.find((g) => g.name === activeGroup),
     [groups, activeGroup],
   );
-  const activeFile = useMemo(
-    () => activeGroupData?.files.find((f) => f.id === activeFileId),
-    [activeGroupData, activeFileId],
+  const filesById = useMemo(() => {
+    const map = new Map<string, FileEntry>();
+    for (const file of activeGroupData?.files ?? []) map.set(file.id, file);
+    return map;
+  }, [activeGroupData]);
+
+  const activeFileId = focusedFileIdOf(panes);
+  const activeFile = activeFileId != null ? filesById.get(activeFileId) : undefined;
+  const openFileIds = useMemo(() => new Set(panes.fileIds), [panes.fileIds]);
+  const isSplit = panes.fileIds.length > 1;
+
+  const paneRowRef = useRef<HTMLElement | null>(null);
+  const { weights, startResize } = usePaneWidths(panes.fileIds.length, paneRowRef);
+  const { registerPane, syncFrom } = useScrollSync(scrollSync && isSplit);
+
+  // Too narrow for columns: show the focused pane only, without touching the
+  // layout, so widening the window brings every column straight back.
+  const isNarrow = useIsNarrow();
+  const isCollapsed = isNarrow && isSplit;
+  const visiblePaneIndexes = useMemo(
+    () =>
+      isCollapsed ? [panes.focusIndex] : Array.from({ length: panes.fileIds.length }, (_, i) => i),
+    [isCollapsed, panes.focusIndex, panes.fileIds.length],
   );
-  const activeFileName = activeFile?.name ?? "";
-  const tocOpen = isTocOpenForFile(tocOpenMap, activeFileId, activeFileName);
+
+  // Align immediately when sync is switched on, rather than waiting for a scroll.
+  useEffect(() => {
+    if (scrollSync) syncFrom(panes.focusIndex);
+  }, [scrollSync, syncFrom, panes.focusIndex]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SCROLL_SYNC_STORAGE_KEY, scrollSync ? "on" : "off");
+    } catch {
+      /* ignore */
+    }
+  }, [scrollSync]);
+
+  // The ToC panel shows the focused pane's outline, so its visibility follows
+  // that pane's per-file toggle.
+  const tocOpen = isTocOpenForFile(tocOpenMap, activeFileId, activeFile?.name ?? "");
   const currentShowTitle: boolean = showTitles[activeGroup] ?? false;
 
-  const setTocOpen = useCallback(
-    (open: boolean) => {
-      if (activeFileId == null) return;
-      setTocOpenMap((prev) => ({ ...prev, [activeFileId]: open }));
-    },
-    [activeFileId],
-  );
+  const handleTocToggle = useCallback((fileId: string) => {
+    setTocOpenMap((prev) => ({ ...prev, [fileId]: prev[fileId] !== true }));
+  }, []);
 
   useEffect(() => {
     document.title = formatTitle(activeFile);
@@ -336,13 +415,9 @@ export function App() {
       loadGroups();
     },
     onFileChanged: (fileId) => {
-      captureScrollPosition();
-      setActiveFileId((current) => {
-        if (current === fileId) {
-          setContentRevision((r) => r + 1);
-        }
-        return current;
-      });
+      // Keyed by file, so every pane showing it reloads. Each pane captures its
+      // own scroll position off this revision bump.
+      setRevisions((prev) => ({ ...prev, [fileId]: (prev[fileId] ?? 0) + 1 }));
     },
   });
 
@@ -402,43 +477,49 @@ export function App() {
     });
   }, []);
 
-  const handleGroupChange = useCallback((name: string) => {
-    window.history.pushState(null, "", groupToPath(name));
-    setActiveGroup(name);
-    setActiveFileId(null);
-  }, []);
+  const handleGroupChange = useCallback(
+    (name: string) => {
+      window.history.pushState(null, "", groupToPath(name));
+      setActiveGroup(name);
+      // The new group's files decide the layout; reconciliation fills it in.
+      setPanes(EMPTY_PANES);
+    },
+    [setPanes],
+  );
 
   const handleFileSelect = useCallback(
-    (fileId: string) => {
-      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId));
-      setActiveFileId(fileId);
+    (fileId: string, target: PaneTarget) => {
+      if (target === "new-pane") {
+        openInNewPane(fileId);
+        return;
+      }
+      openInFocusedPane(fileId);
     },
-    [activeGroup],
+    [openInFocusedPane, openInNewPane],
   );
 
   const handleFileOpened = useCallback(
     (fileId: string) => {
-      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId));
-      setActiveFileId(fileId);
+      openInFocusedPane(fileId);
       setPendingSearchHeading(null);
     },
-    [activeGroup],
+    [openInFocusedPane],
   );
 
   const handleSearchResultSelect = useCallback(
     (fileId: string, heading?: string) => {
-      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId));
-      setActiveFileId(fileId);
+      openInFocusedPane(fileId);
       setPendingSearchHeading(heading || null);
+    },
+    [openInFocusedPane],
+  );
+
+  const handleRemoveFile = useCallback(
+    (fileId: string) => {
+      removeFile(activeGroup, fileId);
     },
     [activeGroup],
   );
-
-  const handleRemoveFile = useCallback(() => {
-    if (activeFileId != null) {
-      removeFile(activeGroup, activeFileId);
-    }
-  }, [activeFileId, activeGroup]);
 
   const handleFilesReorder = useCallback((groupName: string, fileIds: string[]) => {
     // Optimistic update
@@ -455,20 +536,8 @@ export function App() {
     reorderFiles(groupName, fileIds);
   }, []);
 
-  const headingIds = useMemo(() => headings.map((h) => h.id), [headings]);
-
-  const activeHeadingId = useActiveHeading(headingIds, scrollContainer);
-
-  const { captureScrollPosition, onContentRendered } = useScrollRestoration(
-    scrollContainer,
-    activeHeadingId,
-    activeFileId,
-  );
-
-  const handleHeadingClick = useCallback((id: string) => {
-    const el = document.getElementById(id);
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  const handleScrolledToHeading = useCallback(() => {
+    setPendingSearchHeading(null);
   }, []);
 
   const handleZoom = useCallback((content: ZoomContent) => {
@@ -514,6 +583,16 @@ export function App() {
         <ViewModeToggle viewMode={currentViewMode} onToggle={handleViewModeToggle} />
         <TitleToggle showTitle={currentShowTitle} onToggle={handleTitleToggle} />
         <SearchToggle isOpen={searchQuery != null} onToggle={handleSearchToggle} />
+        {isSplit && (
+          <ScrollSyncToggle isSynced={scrollSync} onToggle={() => setScrollSync((v) => !v)} />
+        )}
+        {isCollapsed && (
+          <PaneNavigator
+            focusIndex={panes.focusIndex}
+            paneCount={panes.fileIds.length}
+            onFocusPane={focusPaneAt}
+          />
+        )}
         <div className="ml-auto flex items-center gap-2">
           <FontSizeToggle fontSize={fontSize} onChange={setFontSize} />
           <WidthToggle isWide={isWide} onToggle={() => setIsWide((v) => !v)} />
@@ -526,6 +605,8 @@ export function App() {
             groups={groups}
             activeGroup={activeGroup}
             activeFileId={activeFileId}
+            openFileIds={openFileIds}
+            canOpenNewPane={panes.fileIds.length < MAX_PANES}
             onFileSelect={handleFileSelect}
             onFilesReorder={handleFilesReorder}
             viewMode={currentViewMode}
@@ -537,44 +618,54 @@ export function App() {
             onSearchResultSelect={handleSearchResultSelect}
           />
         )}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div
-            ref={setScrollContainer}
-            className="flex-1 overflow-y-auto overscroll-contain p-8 bg-gh-bg"
-          >
-            {activeFileId != null ? (
-              <MarkdownViewer
-                fileId={activeFileId}
-                fileName={activeFileName}
-                title={activeFile?.title}
-                filePath={activeFile?.path}
-                scrollContainer={scrollContainer}
-                activeGroup={activeGroup}
-                revision={contentRevision}
-                onFileOpened={handleFileOpened}
-                onHeadingsChange={setHeadings}
-                onContentRendered={onContentRendered}
-                isTocOpen={tocOpen}
-                onTocToggle={() => setTocOpen(!tocOpen)}
-                onRemoveFile={handleRemoveFile}
-                uploaded={activeFile?.uploaded}
-                isWide={isWide}
-                fontSize={fontSize}
-                onZoom={handleZoom}
-                scrollToHeading={pendingSearchHeading}
-                onScrolledToHeading={() => setPendingSearchHeading(null)}
-                searchQuery={searchQuery}
-              />
-            ) : (
+        <main ref={paneRowRef} className="flex flex-1 overflow-hidden">
+          {panes.fileIds.length > 0 ? (
+            visiblePaneIndexes.map((index) => {
+              const fileId = panes.fileIds[index];
+              const file = filesById.get(fileId);
+              return (
+                <Pane
+                  // Keyed by position so swapping a column's file refetches in
+                  // place instead of remounting the viewer.
+                  key={index}
+                  fileId={fileId}
+                  file={file}
+                  activeGroup={activeGroup}
+                  paneIndex={index}
+                  isFocused={index === panes.focusIndex}
+                  isSplit={isSplit}
+                  canResize={isSplit && !isCollapsed}
+                  revision={revisions[fileId] ?? 0}
+                  isTocOpen={isTocOpenForFile(tocOpenMap, fileId, file?.name ?? "")}
+                  isWide={isWide}
+                  fontSize={fontSize}
+                  searchQuery={searchQuery}
+                  scrollToHeading={index === panes.focusIndex ? pendingSearchHeading : null}
+                  weight={isCollapsed ? 1 : (weights[index] ?? 1)}
+                  onResizeStart={startResize}
+                  onRegisterForSync={registerPane}
+                  onRequestFocus={focusPaneAt}
+                  onClosePane={closePaneAt}
+                  onRemoveFile={handleRemoveFile}
+                  onFileOpened={handleFileOpened}
+                  onTocToggle={handleTocToggle}
+                  onFocusedTocChange={setFocusedToc}
+                  onScrolledToHeading={handleScrolledToHeading}
+                  onZoom={handleZoom}
+                />
+              );
+            })
+          ) : (
+            <div className="flex-1 overflow-y-auto overscroll-contain bg-gh-bg p-8">
               <EmptyGroupMessage group={activeGroupData} />
-            )}
-          </div>
+            </div>
+          )}
         </main>
         {tocOpen && (
           <TocPanel
-            headings={headings}
-            activeHeadingId={activeHeadingId}
-            onHeadingClick={handleHeadingClick}
+            headings={focusedToc.headings}
+            activeHeadingId={focusedToc.activeHeadingId}
+            onHeadingClick={focusedToc.scrollToHeading}
           />
         )}
       </div>

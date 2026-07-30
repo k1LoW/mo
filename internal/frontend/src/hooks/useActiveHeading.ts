@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { findElementById } from "../utils/dom";
 
 export function useActiveHeading(
   headingIds: string[],
@@ -23,8 +24,10 @@ export function useActiveHeading(
       return;
     }
 
+    // Scoped to the pane's own container: sibling panes may render the same
+    // document, and therefore the same heading IDs.
     const elements = headingIds
-      .map((id) => document.getElementById(id))
+      .map((id) => findElementById(scrollContainer, id))
       .filter((el): el is HTMLElement => el !== null);
 
     if (elements.length === 0) return;

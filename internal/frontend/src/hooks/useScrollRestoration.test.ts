@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useScrollRestoration, SCROLL_SESSION_KEY } from "./useScrollRestoration";
+import { useScrollRestoration, SCROLL_SESSION_KEY, scrollSessionKey } from "./useScrollRestoration";
 
 function makeContainer(scrollTop = 0): HTMLDivElement {
   const el = document.createElement("div");
@@ -19,7 +19,9 @@ function makeContainer(scrollTop = 0): HTMLDivElement {
   return el;
 }
 
-function addHeading(id: string, topOffset: number) {
+// Headings are looked up inside the pane's scroll container, because sibling
+// panes can render the same heading IDs. The fixture mirrors that nesting.
+function addHeading(id: string, topOffset: number, parent: HTMLElement) {
   const el = document.createElement("h2");
   el.id = id;
   el.getBoundingClientRect = () => ({
@@ -33,7 +35,7 @@ function addHeading(id: string, topOffset: number) {
     y: 0,
     toJSON() {},
   });
-  document.body.appendChild(el);
+  parent.appendChild(el);
   return el;
 }
 
@@ -46,11 +48,22 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
+describe("scrollSessionKey", () => {
+  it("keeps the unsuffixed key for the first pane", () => {
+    expect(scrollSessionKey(0)).toBe(SCROLL_SESSION_KEY);
+  });
+
+  it("suffixes every other pane", () => {
+    expect(scrollSessionKey(1)).toBe(`${SCROLL_SESSION_KEY}:1`);
+    expect(scrollSessionKey(2)).toBe(`${SCROLL_SESSION_KEY}:2`);
+  });
+});
+
 describe("useScrollRestoration", () => {
   describe("Path A: heading-based restore", () => {
     it("restores scroll position using heading offset", () => {
       const container = makeContainer(400);
-      const heading = addHeading("section-3", 120);
+      const heading = addHeading("section-3", 120, container);
 
       const { result } = renderHook(
         ({ sc, headingId, fileId }) => useScrollRestoration(sc, headingId, fileId),
@@ -95,7 +108,7 @@ describe("useScrollRestoration", () => {
   describe("Path A: rawScrollTop fallback", () => {
     it("falls back to rawScrollTop when heading is removed", () => {
       const container = makeContainer(500);
-      const heading = addHeading("temp-heading", 200);
+      const heading = addHeading("temp-heading", 200, container);
 
       const { result } = renderHook(
         ({ sc, headingId, fileId }) => useScrollRestoration(sc, headingId, fileId),
@@ -291,6 +304,22 @@ describe("useScrollRestoration", () => {
       const ctx = JSON.parse(stored!);
       expect(ctx.rawScrollTop).toBe(250);
       expect(ctx.fileId).toBe("abc");
+    });
+
+    it("writes each pane to its own key so panes do not overwrite each other", () => {
+      const paneOne = makeContainer(120);
+      const paneTwo = makeContainer(640);
+
+      const one = renderHook(() => useScrollRestoration(paneOne, null, "abc", 0));
+      const two = renderHook(() => useScrollRestoration(paneTwo, null, "abc", 1));
+
+      act(() => {
+        one.result.current.captureScrollPosition();
+        two.result.current.captureScrollPosition();
+      });
+
+      expect(JSON.parse(sessionStorage.getItem(scrollSessionKey(0))!).rawScrollTop).toBe(120);
+      expect(JSON.parse(sessionStorage.getItem(scrollSessionKey(1))!).rawScrollTop).toBe(640);
     });
 
     it("skips capture when no scroll container", () => {

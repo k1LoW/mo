@@ -125,7 +125,61 @@ describe("Sidebar", () => {
     );
 
     await user.click(screen.getByText("GUIDE.md"));
-    expect(onFileSelect).toHaveBeenCalledWith("bbb22222");
+    expect(onFileSelect).toHaveBeenCalledWith("bbb22222", "focused");
+  });
+
+  it("opens a file in a new pane on Alt+click", async () => {
+    const user = userEvent.setup();
+    const onFileSelect = vi.fn();
+    render(
+      <Sidebar
+        groups={groups}
+        activeGroup="default"
+        activeFileId="aaa11111"
+        onFileSelect={onFileSelect}
+        onFilesReorder={() => {}}
+        viewMode="flat"
+        showTitle={false}
+        searchQuery={null}
+        onSearchQueryChange={() => {}}
+      />,
+    );
+
+    await user.keyboard("[AltLeft>]");
+    await user.click(screen.getByText("GUIDE.md"));
+    await user.keyboard("[/AltLeft]");
+
+    expect(onFileSelect).toHaveBeenCalledWith("bbb22222", "new-pane");
+  });
+
+  it("highlights every open file but marks only the focused one", () => {
+    render(
+      <Sidebar
+        groups={groups}
+        activeGroup="default"
+        activeFileId="bbb22222"
+        openFileIds={new Set(["aaa11111", "bbb22222"])}
+        onFileSelect={() => {}}
+        onFilesReorder={() => {}}
+        viewMode="flat"
+        showTitle={false}
+        searchQuery={null}
+        onSearchQueryChange={() => {}}
+      />,
+    );
+
+    const readme = screen.getByText("README.md").closest("a")!;
+    const guide = screen.getByText("GUIDE.md").closest("a")!;
+
+    // Both are visible in a pane, so both get the open treatment.
+    expect(readme.className).toContain("bg-gh-bg-active");
+    expect(guide.className).toContain("bg-gh-bg-active");
+
+    // Only the focused pane's file carries the accent bar and aria-current.
+    expect(readme.className).toContain("border-l-transparent");
+    expect(guide.className).toContain("border-l-gh-accent");
+    expect(readme.getAttribute("aria-current")).toBeNull();
+    expect(guide.getAttribute("aria-current")).toBe("page");
   });
 
   it("renders file items as anchors with href to file URL", () => {

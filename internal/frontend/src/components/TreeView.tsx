@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FileEntry, Group } from "../hooks/useApi";
 import { buildTree, type TreeNode } from "../utils/buildTree";
 import { buildFileUrl } from "../utils/groups";
-import { isPlainLeftClick } from "../utils/linkClick";
+import { fileRowClass, handleFileRowClick } from "../utils/fileRow";
+import type { PaneTarget } from "../utils/panes";
 import { FileContextMenu } from "./FileContextMenu";
 import { FileIcon } from "./FileIcon";
 
@@ -25,12 +26,14 @@ interface TreeViewProps {
   files: FileEntry[];
   activeGroup: string;
   activeFileId: string | null;
+  openFileIds: ReadonlySet<string>;
   showTitle: boolean;
   menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: string) => void;
+  onFileSelect: (id: string, target: PaneTarget) => void;
   onMenuToggle: (id: string) => void;
   onOpenInNewTab: (id: string) => void;
+  onOpenInNewPane?: (id: string) => void;
   onCopyPath: (path: string) => void;
   onCopyLink: (id: string) => void;
   onMoveToGroup: (id: string, group: string) => void;
@@ -42,12 +45,14 @@ export function TreeView({
   files,
   activeGroup,
   activeFileId,
+  openFileIds,
   showTitle,
   menuOpenId,
   otherGroups,
   onFileSelect,
   onMenuToggle,
   onOpenInNewTab,
+  onOpenInNewPane,
   onCopyPath,
   onCopyLink,
   onMoveToGroup,
@@ -97,12 +102,14 @@ export function TreeView({
           depth={0}
           activeGroup={activeGroup}
           activeFileId={activeFileId}
+          openFileIds={openFileIds}
           showTitle={showTitle}
           menuOpenId={menuOpenId}
           otherGroups={otherGroups}
           onFileSelect={onFileSelect}
           onMenuToggle={onMenuToggle}
           onOpenInNewTab={onOpenInNewTab}
+          onOpenInNewPane={onOpenInNewPane}
           onCopyPath={onCopyPath}
           onCopyLink={onCopyLink}
           onMoveToGroup={onMoveToGroup}
@@ -121,12 +128,14 @@ interface TreeNodeItemProps {
   depth: number;
   activeGroup: string;
   activeFileId: string | null;
+  openFileIds: ReadonlySet<string>;
   showTitle: boolean;
   menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: string) => void;
+  onFileSelect: (id: string, target: PaneTarget) => void;
   onMenuToggle: (id: string) => void;
   onOpenInNewTab: (id: string) => void;
+  onOpenInNewPane?: (id: string) => void;
   onCopyPath: (path: string) => void;
   onCopyLink: (id: string) => void;
   onMoveToGroup: (id: string, group: string) => void;
@@ -141,12 +150,14 @@ function TreeNodeItem({
   depth,
   activeGroup,
   activeFileId,
+  openFileIds,
   showTitle,
   menuOpenId,
   otherGroups,
   onFileSelect,
   onMenuToggle,
   onOpenInNewTab,
+  onOpenInNewPane,
   onCopyPath,
   onCopyLink,
   onMoveToGroup,
@@ -163,12 +174,14 @@ function TreeNodeItem({
         depth={depth}
         activeGroup={activeGroup}
         activeFileId={activeFileId}
+        openFileIds={openFileIds}
         showTitle={showTitle}
         menuOpenId={menuOpenId}
         otherGroups={otherGroups}
         onFileSelect={onFileSelect}
         onMenuToggle={onMenuToggle}
         onOpenInNewTab={onOpenInNewTab}
+        onOpenInNewPane={onOpenInNewPane}
         onCopyPath={onCopyPath}
         onCopyLink={onCopyLink}
         onMoveToGroup={onMoveToGroup}
@@ -213,12 +226,14 @@ function TreeNodeItem({
             depth={depth + 1}
             activeGroup={activeGroup}
             activeFileId={activeFileId}
+            openFileIds={openFileIds}
             showTitle={showTitle}
             menuOpenId={menuOpenId}
             otherGroups={otherGroups}
             onFileSelect={onFileSelect}
             onMenuToggle={onMenuToggle}
             onOpenInNewTab={onOpenInNewTab}
+            onOpenInNewPane={onOpenInNewPane}
             onCopyPath={onCopyPath}
             onCopyLink={onCopyLink}
             onMoveToGroup={onMoveToGroup}
@@ -238,12 +253,14 @@ interface FileNodeItemProps {
   depth: number;
   activeGroup: string;
   activeFileId: string | null;
+  openFileIds: ReadonlySet<string>;
   showTitle: boolean;
   menuOpenId: string | null;
   otherGroups: Group[];
-  onFileSelect: (id: string) => void;
+  onFileSelect: (id: string, target: PaneTarget) => void;
   onMenuToggle: (id: string) => void;
   onOpenInNewTab: (id: string) => void;
+  onOpenInNewPane?: (id: string) => void;
   onCopyPath: (path: string) => void;
   onCopyLink: (id: string) => void;
   onMoveToGroup: (id: string, group: string) => void;
@@ -257,37 +274,32 @@ function FileNodeItem({
   depth,
   activeGroup,
   activeFileId,
+  openFileIds,
   showTitle,
   menuOpenId,
   otherGroups,
   onFileSelect,
   onMenuToggle,
   onOpenInNewTab,
+  onOpenInNewPane,
   onCopyPath,
   onCopyLink,
   onMoveToGroup,
   onRemove,
   menuRef,
 }: FileNodeItemProps) {
-  const isActive = file.id === activeFileId;
+  const isFocused = file.id === activeFileId;
 
   return (
     <div className="relative group/file">
       <a
         href={buildFileUrl(activeGroup, file.id)}
-        className={`flex items-center gap-2 w-full px-3 py-2 border-none cursor-pointer text-left text-sm no-underline transition-colors duration-150 ${
-          isActive
-            ? "bg-gh-bg-active text-gh-text font-semibold"
-            : "bg-transparent text-gh-text-secondary hover:bg-gh-bg-hover"
-        }`}
-        style={{ paddingLeft: `${depth * 16 + 12}px` }}
-        onClick={(e) => {
-          if (!isPlainLeftClick(e)) return;
-          e.preventDefault();
-          onFileSelect(file.id);
-        }}
+        className={fileRowClass(openFileIds.has(file.id), isFocused)}
+        // 2px less than the flat list's indent to leave room for the focus bar.
+        style={{ paddingLeft: `${depth * 16 + 10}px` }}
+        onClick={(e) => handleFileRowClick(e, file.id, onFileSelect)}
         title={file.uploaded ? file.name : file.path}
-        aria-current={isActive ? "page" : undefined}
+        aria-current={isFocused ? "page" : undefined}
       >
         <FileIcon uploaded={file.uploaded} />
         <span className="overflow-hidden text-ellipsis whitespace-nowrap pr-6">
@@ -300,6 +312,7 @@ function FileNodeItem({
         otherGroups={otherGroups}
         onToggle={onMenuToggle}
         onOpenInNewTab={onOpenInNewTab}
+        onOpenInNewPane={onOpenInNewPane}
         onCopyPath={onCopyPath}
         onCopyLink={onCopyLink}
         onMoveToGroup={onMoveToGroup}

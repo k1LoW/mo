@@ -9,6 +9,8 @@
   --color-gh-text: #1f2328;
   --color-gh-text-secondary: #636c76;
   --color-gh-border: #d0d7de;
+  /* Marks the focused pane and its sidebar entry. GitHub's accent blue. */
+  --color-gh-accent: #0969da;
   --color-gh-header-bg: #f6f8fa;
   --color-gh-header-text: #1f2328;
   --color-gh-header-border: #d0d7de;
@@ -28,6 +30,7 @@
   --color-gh-text: #e6edf3;
   --color-gh-text-secondary: #8b949e;
   --color-gh-border: #30363d;
+  --color-gh-accent: #4493f8;
   --color-gh-header-bg: #161b22;
   --color-gh-header-text: #e6edf3;
   --color-gh-header-border: #30363d;

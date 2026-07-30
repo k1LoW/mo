@@ -10,6 +10,8 @@ interface FileContextMenuProps {
   otherGroups: Group[];
   onToggle: (id: string) => void;
   onOpenInNewTab: (id: string) => void;
+  /** Omitted when the layout cannot take another column. */
+  onOpenInNewPane?: (id: string) => void;
   onCopyPath: (path: string) => void;
   onCopyLink: (id: string) => void;
   onMoveToGroup: (id: string, group: string) => void;
@@ -23,6 +25,7 @@ export function FileContextMenu({
   otherGroups,
   onToggle,
   onOpenInNewTab,
+  onOpenInNewPane,
   onCopyPath,
   onCopyLink,
   onMoveToGroup,
@@ -54,6 +57,21 @@ export function FileContextMenu({
             </svg>
             Open in new tab
           </button>
+          {onOpenInNewPane && (
+            <button className={MENU_ITEM_CLASS} onClick={() => onOpenInNewPane(file.id)}>
+              <svg
+                className="size-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                viewBox="0 0 24 24"
+              >
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <line x1="12" y1="4" x2="12" y2="20" />
+              </svg>
+              Open in new pane
+            </button>
+          )}
           <button className={MENU_ITEM_CLASS} onClick={() => onCopyLink(file.id)}>
             <svg className="size-4" viewBox="0 0 16 16" fill="currentColor">
               <path d="M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 .75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25Z" />

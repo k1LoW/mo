@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { findElementById } from "../utils/dom";
 
 export const SCROLL_SESSION_KEY = "mo-scroll-context";
+
+/**
+ * Each pane restores its own scroll position, so they cannot share one key.
+ * Pane 0 keeps the unsuffixed key it has always used, which is also the key
+ * App reads to recover the focused file after a reload.
+ */
+export function scrollSessionKey(paneIndex: number): string {
+  return paneIndex === 0 ? SCROLL_SESSION_KEY : `${SCROLL_SESSION_KEY}:${paneIndex}`;
+}
 
 interface ScrollContext {
   headingId: string | null;
@@ -14,15 +24,16 @@ export function useScrollRestoration(
   scrollContainer: HTMLElement | null,
   activeHeadingId: string | null,
   activeFileId: string | null,
+  paneIndex = 0,
 ) {
   const savedContextRef = useRef<ScrollContext | null>(null);
   const pendingRestoreRef = useRef(false);
   const sessionRestoredRef = useRef(false);
 
   // Single ref object for stable access in beforeunload and captureScrollPosition
-  const latestRef = useRef({ scrollContainer, activeHeadingId, activeFileId });
+  const latestRef = useRef({ scrollContainer, activeHeadingId, activeFileId, paneIndex });
   useLayoutEffect(() => {
-    latestRef.current = { scrollContainer, activeHeadingId, activeFileId };
+    latestRef.current = { scrollContainer, activeHeadingId, activeFileId, paneIndex };
   });
 
   const captureScrollPosition = useCallback(() => {
@@ -30,6 +41,7 @@ export function useScrollRestoration(
       scrollContainer: sc,
       activeFileId: fileId,
       activeHeadingId: headingId,
+      paneIndex: index,
     } = latestRef.current;
     if (!sc || !fileId) return;
 
@@ -37,7 +49,7 @@ export function useScrollRestoration(
     let relativeOffset = 0;
 
     if (headingId) {
-      const headingEl = document.getElementById(headingId);
+      const headingEl = findElementById(sc, headingId);
       if (headingEl) {
         relativeOffset = headingEl.getBoundingClientRect().top - sc.getBoundingClientRect().top;
       }
@@ -55,7 +67,7 @@ export function useScrollRestoration(
     pendingRestoreRef.current = true;
 
     try {
-      sessionStorage.setItem(SCROLL_SESSION_KEY, JSON.stringify(ctx));
+      sessionStorage.setItem(scrollSessionKey(index), JSON.stringify(ctx));
     } catch {
       // sessionStorage may be unavailable
     }
@@ -66,7 +78,7 @@ export function useScrollRestoration(
     if (!sc) return;
 
     if (ctx.headingId) {
-      const headingEl = document.getElementById(ctx.headingId);
+      const headingEl = findElementById(sc, ctx.headingId);
       if (headingEl) {
         const currentOffset =
           headingEl.getBoundingClientRect().top - sc.getBoundingClientRect().top;
@@ -79,7 +91,7 @@ export function useScrollRestoration(
   }, []);
 
   const onContentRendered = useCallback(() => {
-    const fileId = latestRef.current.activeFileId;
+    const { activeFileId: fileId, paneIndex: index } = latestRef.current;
 
     // Path A: React re-render (ref-based)
     if (pendingRestoreRef.current && savedContextRef.current) {
@@ -90,7 +102,7 @@ export function useScrollRestoration(
       savedContextRef.current = null;
       pendingRestoreRef.current = false;
       try {
-        sessionStorage.removeItem(SCROLL_SESSION_KEY);
+        sessionStorage.removeItem(scrollSessionKey(index));
       } catch {
         // ignore
       }
@@ -101,10 +113,10 @@ export function useScrollRestoration(
     if (sessionRestoredRef.current) return;
     sessionRestoredRef.current = true;
     try {
-      const stored = sessionStorage.getItem(SCROLL_SESSION_KEY);
+      const stored = sessionStorage.getItem(scrollSessionKey(index));
       if (stored) {
         const ctx: ScrollContext = JSON.parse(stored);
-        sessionStorage.removeItem(SCROLL_SESSION_KEY);
+        sessionStorage.removeItem(scrollSessionKey(index));
         if (ctx.fileId === fileId && ctx.url === window.location.pathname) {
           restoreFromContext(ctx);
         }

@@ -17,6 +17,8 @@ import { RawToggle } from "./RawToggle";
 import { TocToggle } from "./TocToggle";
 import { CopyButton } from "./CopyButton";
 import { CloseFileButton } from "./CloseFileButton";
+import { ClosePaneButton } from "./ClosePaneButton";
+import { findElementById, scrollElementToTop } from "../utils/dom";
 import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve";
 import { buildRelativeOpenUrl } from "../utils/groups";
 import { parseFrontmatter } from "../utils/frontmatter";
@@ -92,6 +94,8 @@ interface MarkdownViewerProps {
   isTocOpen: boolean;
   onTocToggle: () => void;
   onRemoveFile: () => void;
+  /** Set only in split view: removes this column without touching the group. */
+  onClosePane?: () => void;
   uploaded?: boolean;
   isWide: boolean;
   fontSize: FontSize;
@@ -571,6 +575,7 @@ export function MarkdownViewer({
   isTocOpen,
   onTocToggle,
   onRemoveFile,
+  onClosePane,
   uploaded,
   isWide,
   fontSize,
@@ -684,14 +689,12 @@ export function MarkdownViewer({
                   if (!isPlainLeftClick(e)) return;
                   const id = href?.slice(1);
                   if (!id) return;
-                  const target = document.getElementById(id);
+                  // Scoped to this document: a sibling pane may render the same
+                  // heading IDs, and the link must stay inside its own column.
+                  const target = findElementById(articleRef.current, id);
                   if (target) {
                     e.preventDefault();
-                    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-                    target.scrollIntoView({
-                      behavior: reduced ? "auto" : "smooth",
-                      block: "start",
-                    });
+                    scrollElementToTop(scrollContainer ?? null, target);
                     history.pushState(null, "", href);
                   }
                 }}
@@ -731,7 +734,7 @@ export function MarkdownViewer({
         }
       },
     }),
-    [activeGroup, fileId, handleLinkClick, onZoom],
+    [activeGroup, fileId, handleLinkClick, onZoom, scrollContainer],
   );
 
   const isMarkdown = isMarkdownFile(fileName);
@@ -816,10 +819,10 @@ export function MarkdownViewer({
       (el) => (el.textContent ?? "").trim() === scrollToHeading,
     );
     if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      scrollElementToTop(scrollContainer ?? null, target as HTMLElement);
       onScrolledToHeading?.();
     }
-  }, [loading, renderedContent, scrollToHeading, onScrolledToHeading]);
+  }, [loading, renderedContent, scrollToHeading, onScrolledToHeading, scrollContainer]);
 
   useLayoutEffect(() => {
     if (loading || !articleRef.current || !isMarkdown || isRawView || !searchQuery?.trim()) {
@@ -932,6 +935,7 @@ export function MarkdownViewer({
         {isMarkdown && <TocToggle isTocOpen={isTocOpen} onToggle={onTocToggle} />}
         {isMarkdown && <RawToggle isRaw={isRawView} onToggle={() => setIsRawView((v) => !v)} />}
         <CopyButton content={content} />
+        {onClosePane && <ClosePaneButton onClose={onClosePane} />}
         <CloseFileButton onClose={onRemoveFile} uploaded={uploaded} />
       </div>
     </div>
