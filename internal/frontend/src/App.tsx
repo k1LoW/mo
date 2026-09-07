@@ -37,6 +37,7 @@ import {
 } from "./utils/groups";
 import { isMarkdownFile } from "./utils/filetype";
 import { formatFileLabel } from "./utils/fileLabel";
+import { jumpToHeading } from "./utils/jumpToHeading";
 
 const VIEWMODE_STORAGE_KEY = "mo-sidebar-viewmode";
 const WIDTH_STORAGE_KEY = "mo-layout-width";
@@ -466,9 +467,7 @@ export function App() {
   );
 
   const handleHeadingClick = useCallback((id: string) => {
-    const el = document.getElementById(id);
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    jumpToHeading(id);
   }, []);
 
   const handleZoom = useCallback((content: ZoomContent) => {

@@ -10,6 +10,16 @@ interface ScrollContext {
   url: string;
 }
 
+function initialHashId(): string | null {
+  const raw = window.location.hash.slice(1);
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 export function useScrollRestoration(
   scrollContainer: HTMLElement | null,
   activeHeadingId: string | null,
@@ -18,6 +28,9 @@ export function useScrollRestoration(
   const savedContextRef = useRef<ScrollContext | null>(null);
   const pendingRestoreRef = useRef(false);
   const sessionRestoredRef = useRef(false);
+  // A heading id from the initial URL hash (e.g. a shared table-of-contents deep
+  // link). Applied once, after the first content render, then cleared.
+  const hashScrollRef = useRef<string | null>(initialHashId());
 
   // Single ref object for stable access in beforeunload and captureScrollPosition
   const latestRef = useRef({ scrollContainer, activeHeadingId, activeFileId });
@@ -80,6 +93,29 @@ export function useScrollRestoration(
 
   const onContentRendered = useCallback(() => {
     const fileId = latestRef.current.activeFileId;
+
+    // A URL hash points at a specific heading, so it wins over a restored scroll
+    // position on load. Consumed once so later renders fall through to restore.
+    const hashId = hashScrollRef.current;
+    if (hashId) {
+      hashScrollRef.current = null;
+      const sc = latestRef.current.scrollContainer;
+      const headingEl = document.getElementById(hashId);
+      if (sc && headingEl) {
+        const offset = headingEl.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+        sc.scrollTop += offset;
+        // Drop any saved position so a later render does not undo the deep link.
+        savedContextRef.current = null;
+        pendingRestoreRef.current = false;
+        sessionRestoredRef.current = true;
+        try {
+          sessionStorage.removeItem(SCROLL_SESSION_KEY);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+    }
 
     // Path A: React re-render (ref-based)
     if (pendingRestoreRef.current && savedContextRef.current) {
