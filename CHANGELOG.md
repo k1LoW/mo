@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.6.9](https://github.com/k1LoW/mo/compare/v1.6.8...v1.6.9) - 2026-09-08
+
+### Other Changes
+- fix(server): use errors.AsType for the MaxBytesError check by @k1LoW in https://github.com/k1LoW/mo/pull/282
+- ci: report the coverage of a pull request as well by @k1LoW in https://github.com/k1LoW/mo/pull/284
+
 ## [v1.6.8](https://github.com/k1LoW/mo/compare/v1.6.7...v1.6.8) - 2026-09-07
 
 ### New Features 🎉
