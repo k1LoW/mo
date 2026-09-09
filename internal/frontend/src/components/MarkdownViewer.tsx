@@ -21,6 +21,7 @@ import { resolveLink, resolveImageSrc, extractLanguage } from "../utils/resolve"
 import { buildRelativeOpenUrl } from "../utils/groups";
 import { parseFrontmatter } from "../utils/frontmatter";
 import { stripMdxSyntax } from "../utils/mdx";
+import { normalizeDisplayMath } from "../utils/displayMath";
 import { isMarkdownFile, detectLanguage } from "../utils/filetype";
 import { formatFileLabel } from "../utils/fileLabel";
 import type { ZoomContent } from "./ZoomModal";
@@ -750,7 +751,9 @@ export function MarkdownViewer({
       return <RawView content={content} />;
     }
     const base = parsed ? parsed.content : content;
-    const md = fileName.toLowerCase().endsWith(".mdx") ? stripMdxSyntax(base) : base;
+    const md = fileName.toLowerCase().endsWith(".mdx")
+      ? normalizeDisplayMath(stripMdxSyntax(base))
+      : normalizeDisplayMath(base);
     return (
       <>
         {parsed && <FrontmatterBlock yaml={parsed.yaml} />}
