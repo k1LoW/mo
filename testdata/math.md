@@ -24,6 +24,20 @@ $$
 \sum_{i=1}^n i = \frac{n(n+1)}{2}
 $$
 
+$$F(x, y) = \int_0^{x-y} (x-y-t) f(t)\, dt$$
+
+around text
+$$y=x$$
+around text
+
+around text $$y=x$$ around text
+
+`$$...$$` inside fenced code blocks must stay untouched:
+
+```bash
+echo $$ > /tmp/pid; kill $$
+```
+
 ## Matrix
 
 A 2x2 matrix:
