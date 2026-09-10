@@ -28,13 +28,13 @@ jobs:
           go-version-file: go.mod
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: internal/frontend/package.json
 
       - id: run-tagpr
         name: Run tagpr
-        uses: Songmu/tagpr@242e22916eb775d6e359959fe3ba5c497de4a01a # v1.20.2
+        uses: Songmu/tagpr@7ebae2dcc300132baa7cc9dd108c8923b07fc366 # v1.20.3
 
   assets:
     needs: tagpr
@@ -58,7 +58,7 @@ jobs:
           cache: true
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: internal/frontend/package.json
 
