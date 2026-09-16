@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1821,6 +1822,59 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("GET /", handleSPA())
 
 	return withCSP(mux)
+}
+
+// WithLoopbackHostOnly rejects any request whose Host header does not name the
+// loopback interface.
+//
+// Without this, a loopback-bound mo is reachable from any web page the user
+// happens to visit, through DNS rebinding: the page is served from a domain
+// with a short TTL, re-resolves that domain to 127.0.0.1, and fetches its own
+// origin. The browser then treats mo as same-origin with the attacker's page,
+// so no CORS check applies and the response is readable -- every document in
+// every group, via /_/api/groups and the content endpoint.
+//
+// The browser always sends the name it believes it is talking to, and cannot
+// be made to lie about it, so comparing Host against the loopback names is a
+// complete defense. A real request from the user's own browser carries
+// "127.0.0.1:<port>", "[::1]:<port>" or "localhost:<port>"; a rebound one
+// carries the attacker's domain.
+//
+// Applied only when the bind address is itself loopback (see cmd/root.go): a
+// deliberately exposed server has opted into being reached by name, and
+// --dangerously-allow-remote-access is the escape hatch for a reverse proxy in
+// front of a loopback bind.
+func WithLoopbackHostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopbackHost(r.Host) {
+			slog.Warn("rejected request with non-loopback Host header", "host", r.Host, "path", r.URL.Path)
+			http.Error(w, "forbidden: Host header does not name the loopback interface", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isLoopbackHost reports whether a Host header value names the loopback
+// interface. Accepts an optional port, and IPv6 in brackets with or without
+// one.
+func isLoopbackHost(host string) bool {
+	if host == "" {
+		// HTTP/1.1 requires Host; net/http rejects a missing one before this,
+		// and HTTP/2 synthesizes it from :authority. Empty is not loopback.
+		return false
+	}
+	h := host
+	if hostOnly, _, err := net.SplitHostPort(h); err == nil {
+		h = hostOnly
+	}
+	// "[::1]" with no port never reaches SplitHostPort successfully.
+	h = strings.TrimSuffix(strings.TrimPrefix(h, "["), "]")
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 func withCSP(next http.Handler) http.Handler {

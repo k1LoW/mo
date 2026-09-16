@@ -1464,6 +1464,18 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 
 	handler := server.NewHandler(state)
 
+	// A loopback-bound server is still reachable from any web page the user
+	// visits, via DNS rebinding -- the page re-resolves its own domain to
+	// 127.0.0.1 and is then same-origin with mo, so CORS never applies. The
+	// Host header is what distinguishes the two, and the browser cannot be made
+	// to lie about it. Only when we are actually on loopback: a deliberately
+	// exposed server has opted into being reached by name, and the
+	// --dangerously-allow-remote-access flag is the escape hatch for a reverse
+	// proxy in front of a loopback bind.
+	if isLoopbackBind(bind) && !dangerouslyAllowRemoteAccess {
+		handler = server.WithLoopbackHostOnly(handler)
+	}
+
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
