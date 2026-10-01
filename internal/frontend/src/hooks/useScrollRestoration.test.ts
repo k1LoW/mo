@@ -39,11 +39,13 @@ function addHeading(id: string, topOffset: number) {
 
 beforeEach(() => {
   sessionStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 afterEach(() => {
   document.body.innerHTML = "";
   sessionStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("useScrollRestoration", () => {
@@ -264,6 +266,102 @@ describe("useScrollRestoration", () => {
         result.current.onContentRendered();
       });
       expect(container.scrollTop).toBe(0);
+    });
+  });
+
+  describe("URL hash deep link", () => {
+    it("scrolls to the heading named in the URL hash on first render", () => {
+      window.history.replaceState(null, "", "/#section-3");
+      const container = makeContainer(0);
+      addHeading("section-3", 120);
+
+      const { result } = renderHook(
+        ({ sc, headingId, fileId }) => useScrollRestoration(sc, headingId, fileId),
+        {
+          initialProps: {
+            sc: container as HTMLElement | null,
+            headingId: null as string | null,
+            fileId: "file1" as string | null,
+          },
+        },
+      );
+
+      act(() => {
+        result.current.onContentRendered();
+      });
+
+      // Heading sits 120px below the container top, so it lands at the top.
+      expect(container.scrollTop).toBe(120);
+    });
+
+    it("takes priority over a saved scroll position from reload", () => {
+      window.history.replaceState(null, "", "/#section-3");
+      const container = makeContainer(0);
+      addHeading("section-3", 90);
+
+      sessionStorage.setItem(
+        SCROLL_SESSION_KEY,
+        JSON.stringify({
+          headingId: null,
+          relativeOffset: 0,
+          rawScrollTop: 750,
+          fileId: "file1",
+          url: "/",
+        }),
+      );
+
+      const { result } = renderHook(
+        ({ sc, headingId, fileId }) => useScrollRestoration(sc, headingId, fileId),
+        {
+          initialProps: {
+            sc: container as HTMLElement | null,
+            headingId: null as string | null,
+            fileId: "file1" as string | null,
+          },
+        },
+      );
+
+      act(() => {
+        result.current.onContentRendered();
+      });
+
+      expect(container.scrollTop).toBe(90);
+      expect(sessionStorage.getItem(SCROLL_SESSION_KEY)).toBeNull();
+    });
+
+    it("only applies the hash once, then falls through to restore", () => {
+      window.history.replaceState(null, "", "/#missing-heading");
+      const container = makeContainer(0);
+
+      sessionStorage.setItem(
+        SCROLL_SESSION_KEY,
+        JSON.stringify({
+          headingId: null,
+          relativeOffset: 0,
+          rawScrollTop: 500,
+          fileId: "file1",
+          url: "/",
+        }),
+      );
+
+      const { result } = renderHook(
+        ({ sc, headingId, fileId }) => useScrollRestoration(sc, headingId, fileId),
+        {
+          initialProps: {
+            sc: container as HTMLElement | null,
+            headingId: null as string | null,
+            fileId: "file1" as string | null,
+          },
+        },
+      );
+
+      // Hash target is absent, so this render consumes the hash without scrolling
+      // and still restores the saved position.
+      act(() => {
+        result.current.onContentRendered();
+      });
+
+      expect(container.scrollTop).toBe(500);
     });
   });
 
