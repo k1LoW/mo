@@ -9,8 +9,8 @@ github.com/fswatcher/fswatcher v0.1.0 h1:g1Y+SP6+I7Omc8ZiGkfd2WPB3RpaWqASYbK9Ndf
 github.com/fswatcher/fswatcher v0.1.0/go.mod h1:uH4fRb/O2zZUuqbGVktogTQM5RD7mGEMArGyVU6DMxo=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
-github.com/k1LoW/donegroup v1.10.3 h1:+FPxE8MSxgqsdkxj8Y8hfFF1rHooh04pdl1441EeylQ=
-github.com/k1LoW/donegroup v1.10.3/go.mod h1:I/s+pK8/noQoE7lY3ecYwhXOBvcKGYOBeKtSBlM6IXk=
+github.com/k1LoW/donegroup v1.10.4 h1:dyutPO6003B+8TCd155jPEpy7MttmoRFxJPPZoq6pjo=
+github.com/k1LoW/donegroup v1.10.4/go.mod h1:I/s+pK8/noQoE7lY3ecYwhXOBvcKGYOBeKtSBlM6IXk=
 github.com/k1LoW/errors v1.2.1 h1:xHfjFaFn+htIdq3NemkiGtVo5Voi3oplgL8Djg6giYs=
 github.com/k1LoW/errors v1.2.1/go.mod h1:FnyqU5omnd/+J2ViEsDaIZXTZGuRMZ5uDpLEqrEsMp4=
 github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=
