@@ -1821,7 +1821,9 @@ func NewHandler(state *State) http.Handler {
 	mux.HandleFunc("GET /_/events", handleSSE(state))
 	mux.HandleFunc("GET /", handleSPA())
 
-	return withCSP(mux)
+	// The API decodes JSON without checking Content-Type, so a cross-site
+	// "simple" POST would otherwise reach state-changing endpoints.
+	return withCSP(http.NewCrossOriginProtection().Handler(mux))
 }
 
 // WithLoopbackHostOnly rejects any request whose Host header does not name the
