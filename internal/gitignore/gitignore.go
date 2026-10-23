@@ -31,7 +31,7 @@ func NewChecker(root string) *Checker {
 	if IsIgnored(root) {
 		return nil
 	}
-	cmd := exec.Command("git", "-C", root, "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z")
+	cmd := exec.Command("git", "-C", root, "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z") //nolint:gosec
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -40,7 +40,7 @@ func NewChecker(root string) *Checker {
 		return nil
 	}
 	ignored := make(map[string]struct{})
-	for _, rel := range strings.Split(string(out), "\x00") {
+	for rel := range strings.SplitSeq(string(out), "\x00") {
 		rel = strings.TrimSuffix(rel, "/")
 		if rel == "" {
 			continue
@@ -73,6 +73,6 @@ func (c *Checker) Ignored(path string) bool {
 // one of its parent directories is ignored. It returns false when git is
 // unavailable or path is not in a git repository.
 func IsIgnored(path string) bool {
-	err := exec.Command("git", "-C", filepath.Dir(path), "check-ignore", "-q", "--", path).Run()
+	err := exec.Command("git", "-C", filepath.Dir(path), "check-ignore", "-q", "--", path).Run() //nolint:gosec
 	return err == nil
 }

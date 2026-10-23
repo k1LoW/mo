@@ -22,7 +22,7 @@ func setupRepo(t *testing.T) string {
 		"secret.md":           "",
 		"node_modules/x/b.md": "",
 	} {
-		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

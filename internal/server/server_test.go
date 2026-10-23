@@ -3027,7 +3027,7 @@ func TestAddPattern_GitIgnore(t *testing.T) {
 		"a.md":                "# a",
 		"node_modules/x/b.md": "# b",
 	} {
-		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -3050,13 +3050,13 @@ func TestAddPattern_GitIgnore(t *testing.T) {
 		t.Fatal(err)
 	}
 	ignoredNew := filepath.Join(d, "node_modules", "y", "c.md")
-	if err := os.WriteFile(ignoredNew, []byte("# c"), 0o644); err != nil {
+	if err := os.WriteFile(ignoredNew, []byte("# c"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s.handleCreateForGlobs(filepath.Join(d, "node_modules", "y"))
 	s.handleCreateForGlobs(ignoredNew)
 	visibleNew := filepath.Join(d, "new.md")
-	if err := os.WriteFile(visibleNew, []byte("# new"), 0o644); err != nil {
+	if err := os.WriteFile(visibleNew, []byte("# new"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s.handleCreateForGlobs(visibleNew)

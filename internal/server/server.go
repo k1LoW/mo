@@ -221,6 +221,11 @@ func WithNoIgnore(noIgnore bool) PatternOption {
 	return func(gp *GlobPattern) { gp.NoIgnore = noIgnore }
 }
 
+// IsRecursive returns true if the pattern contains ** for recursive matching.
+func (gp *GlobPattern) IsRecursive() bool {
+	return strings.Contains(gp.Pattern, "**")
+}
+
 // ignoreChecker returns the checker used to skip git-ignored paths below the
 // pattern's base directory, or nil when the pattern opted out.
 func (gp *GlobPattern) ignoreChecker() *gitignore.Checker {
@@ -228,11 +233,6 @@ func (gp *GlobPattern) ignoreChecker() *gitignore.Checker {
 		return nil
 	}
 	return gitignore.NewChecker(gp.BaseDir)
-}
-
-// IsRecursive returns true if the pattern contains ** for recursive matching.
-func (gp *GlobPattern) IsRecursive() bool {
-	return strings.Contains(gp.Pattern, "**")
 }
 
 type State struct {
