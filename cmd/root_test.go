@@ -1413,3 +1413,40 @@ func TestResolveArgs_MixedFilesAndDirs(t *testing.T) {
 		t.Fatalf("got %d files, want 2: %v", len(files), files)
 	}
 }
+
+func TestResolveArgs_RespectGitignore(t *testing.T) {
+	d := t.TempDir()
+	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
+		t.Skip("git unavailable")
+	}
+	if err := os.MkdirAll(filepath.Join(d, "node_modules", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for p, c := range map[string]string{
+		".gitignore":          "node_modules\n",
+		"a.md":                "",
+		"node_modules/x/b.md": "",
+	} {
+		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	files, _, err := resolveArgs([]string{d}, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || filepath.Base(files[0]) != "a.md" {
+		t.Errorf("default: got %v, want only a.md", files)
+	}
+
+	noIgnore = true
+	defer func() { noIgnore = false }()
+	files, _, err = resolveArgs([]string{d}, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Errorf("--no-ignore: got %v, want 2 files", files)
+	}
+}

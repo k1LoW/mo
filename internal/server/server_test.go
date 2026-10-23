@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -3010,5 +3011,68 @@ func TestWalkDirsForPattern_SkipsUnresolvableNonDirEntries(t *testing.T) {
 		if !slices.Contains(visited, want) {
 			t.Errorf("walkDirsForPattern did not hand over %q; visited=%q", want, visited)
 		}
+	}
+}
+
+func TestAddPattern_GitIgnore(t *testing.T) {
+	d := t.TempDir()
+	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
+		t.Skip("git unavailable")
+	}
+	if err := os.MkdirAll(filepath.Join(d, "node_modules", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for p, c := range map[string]string{
+		".gitignore":          "node_modules\n",
+		"a.md":                "# a",
+		"node_modules/x/b.md": "# b",
+	} {
+		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pattern := filepath.Join(d, "**", "*.md")
+
+	ctx, cancel := donegroup.WithCancel(context.Background())
+	defer cancel()
+
+	s := NewState(ctx)
+	entries, err := s.AddPattern(pattern, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || filepath.Base(entries[0].Path) != "a.md" {
+		t.Errorf("default: got %d entries, want only a.md", len(entries))
+	}
+
+	// Files created later follow the same rule.
+	if err := os.MkdirAll(filepath.Join(d, "node_modules", "y"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ignoredNew := filepath.Join(d, "node_modules", "y", "c.md")
+	if err := os.WriteFile(ignoredNew, []byte("# c"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.handleCreateForGlobs(filepath.Join(d, "node_modules", "y"))
+	s.handleCreateForGlobs(ignoredNew)
+	visibleNew := filepath.Join(d, "new.md")
+	if err := os.WriteFile(visibleNew, []byte("# new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.handleCreateForGlobs(visibleNew)
+	if got := len(s.groups["default"].Files); got != 2 {
+		t.Errorf("after create events: got %d files, want 2 (a.md, new.md)", got)
+	}
+
+	s2 := NewState(ctx)
+	entries, err = s2.AddPattern(pattern, "default", WithNoIgnore(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 4 {
+		t.Errorf("WithNoIgnore: got %d entries, want 4 (a.md, new.md, b.md, c.md)", len(entries))
+	}
+	if data := s2.snapshotRestoreData(); len(data.NoIgnorePatterns["default"]) != 1 {
+		t.Errorf("NoIgnorePatterns not recorded in restore data: %v", data.NoIgnorePatterns)
 	}
 }
