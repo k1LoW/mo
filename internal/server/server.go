@@ -210,6 +210,8 @@ type GlobPattern struct {
 	BaseDir      string // Base directory extracted via SplitPattern
 	Group        string // Target group for matched files
 	NoIgnore     bool   // Include files ignored by git (default: git-ignored files and directories are skipped)
+	baseIgnored  bool   // True when BaseDir itself is ignored or outside a git repository
+	watchedDirs  map[string]struct{}
 }
 
 // PatternOption customizes how AddPattern registers a pattern.
@@ -226,10 +228,15 @@ func (gp *GlobPattern) IsRecursive() bool {
 	return strings.Contains(gp.Pattern, "**")
 }
 
+// skipsIgnored reports whether git-ignored paths below BaseDir should be skipped.
+func (gp *GlobPattern) skipsIgnored() bool {
+	return !gp.NoIgnore && !gp.baseIgnored
+}
+
 // ignoreChecker returns the checker used to skip git-ignored paths below the
 // pattern's base directory, or nil when the pattern opted out.
 func (gp *GlobPattern) ignoreChecker() *gitignore.Checker {
-	if gp.NoIgnore {
+	if !gp.skipsIgnored() {
 		return nil
 	}
 	return gitignore.NewChecker(gp.BaseDir)
@@ -719,38 +726,57 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 		return nil, fmt.Errorf("base path %q is not a directory", base)
 	}
 
-	gp, createdGroup, added := func() (*GlobPattern, bool, bool) {
+	probe := &GlobPattern{
+		Pattern:      absPattern,
+		PatternSlash: dsPattern,
+		BaseDir:      base,
+		Group:        groupName,
+	}
+	for _, opt := range opts {
+		opt(probe)
+	}
+
+	s.mu.RLock()
+	for _, p := range s.patterns {
+		if p.Pattern == absPattern && p.Group == groupName && (p.NoIgnore || !probe.NoIgnore) {
+			s.mu.RUnlock()
+			return nil, nil
+		}
+	}
+	s.mu.RUnlock()
+
+	checker := probe.ignoreChecker()
+	if !probe.NoIgnore && checker == nil {
+		probe.baseIgnored = true
+	}
+
+	gp, prev, createdGroup, added := func() (*GlobPattern, *GlobPattern, bool, bool) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		for _, p := range s.patterns {
+		for i, p := range s.patterns {
 			if p.Pattern == absPattern && p.Group == groupName {
-				return nil, false, false
+				if !p.NoIgnore && probe.NoIgnore {
+					probe.watchedDirs = p.watchedDirs
+					s.patterns[i] = probe
+					return probe, p, false, true
+				}
+				return nil, nil, false, false
 			}
 		}
-		gp := &GlobPattern{
-			Pattern:      absPattern,
-			PatternSlash: dsPattern,
-			BaseDir:      base,
-			Group:        groupName,
-		}
-		for _, opt := range opts {
-			opt(gp)
-		}
-		s.patterns = append(s.patterns, gp)
+		s.patterns = append(s.patterns, probe)
 		// Ensure the group exists even if no files match yet.
 		createdGroup := false
 		if _, ok := s.groups[groupName]; !ok {
 			s.groups[groupName] = &Group{Name: groupName}
 			createdGroup = true
 		}
-		return gp, createdGroup, true
+		return probe, nil, createdGroup, true
 	}()
 	if !added {
 		return nil, nil
 	}
 
 	// Initial expansion
-	checker := gp.ignoreChecker()
 	var matches []string
 	if gp.IsRecursive() {
 		var matchErr error
@@ -779,13 +805,10 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 			err = matchErr
 		}
 	} else {
-		matches, err = doublestar.Glob(os.DirFS(base), relPat, doublestar.WithFilesOnly())
-		matches = slices.DeleteFunc(matches, func(m string) bool {
-			return checker.Ignored(filepath.Join(base, m))
-		})
+		matches, err = doublestar.Glob(checker.DirFS(base), relPat, doublestar.WithFilesOnly())
 	}
 	if err != nil {
-		s.rollbackPattern(gp, createdGroup)
+		s.rollbackPattern(gp, prev, createdGroup)
 		return nil, fmt.Errorf("glob expansion failed: %w", err)
 	}
 	collate.New(language.Und, collate.Numeric).SortStrings(matches)
@@ -801,7 +824,10 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 		entries = append(entries, entry)
 	}
 
-	s.watchDirsForPattern(gp)
+	if prev != nil {
+		s.markDirty()
+	}
+	s.watchDirsForPattern(gp, checker)
 
 	return entries, nil
 }
@@ -832,6 +858,7 @@ func (s *State) PatternsForGroup(groupName string) []string {
 // Returns true if the pattern was found and removed.
 func (s *State) RemovePattern(absPattern, groupName string) bool {
 	var removed *GlobPattern
+	var dirsToUnwatch []string
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -839,6 +866,10 @@ func (s *State) RemovePattern(absPattern, groupName string) bool {
 			if p.Pattern == absPattern && p.Group == groupName {
 				removed = p
 				s.patterns = append(s.patterns[:i], s.patterns[i+1:]...)
+				for dir := range p.watchedDirs {
+					dirsToUnwatch = append(dirsToUnwatch, dir)
+				}
+				p.watchedDirs = nil
 				break
 			}
 		}
@@ -848,7 +879,9 @@ func (s *State) RemovePattern(absPattern, groupName string) bool {
 		return false
 	}
 
-	s.walkDirsForPattern(removed, s.removeDirWatch)
+	for _, dir := range dirsToUnwatch {
+		s.removeDirWatch(dir)
+	}
 
 	slog.Info("pattern removed", "pattern", absPattern, "group", groupName)
 	s.mu.Lock()
@@ -1012,6 +1045,10 @@ func (s *State) groupHasPatterns(groupName string) bool {
 }
 
 func (s *State) walkDirsForPattern(gp *GlobPattern, fn func(string)) {
+	s.walkDirsForPatternWithChecker(gp, gp.ignoreChecker(), fn)
+}
+
+func (s *State) walkDirsForPatternWithChecker(gp *GlobPattern, checker *gitignore.Checker, fn func(string)) {
 	if s.watcher == nil {
 		return
 	}
@@ -1020,7 +1057,7 @@ func (s *State) walkDirsForPattern(gp *GlobPattern, fn func(string)) {
 		return
 	}
 
-	unresolved, err := walkSymlinkTreeSkip(gp.BaseDir, fn, nil, gp.ignoreChecker().Ignored)
+	unresolved, err := walkSymlinkTreeSkip(gp.BaseDir, fn, nil, checker.Ignored)
 	// Entries that could not be classified never reached fn, so hand over the
 	// ones already tracked as watched directories. Without this, unwatch cannot
 	// decrement the refcount of a directory that stopped resolving after its
@@ -1376,8 +1413,10 @@ func (s *State) sendEvent(e sseEvent) {
 	}
 }
 
-func (s *State) watchDirsForPattern(gp *GlobPattern) {
-	s.walkDirsForPattern(gp, s.addDirWatch)
+func (s *State) watchDirsForPattern(gp *GlobPattern, checker *gitignore.Checker) {
+	s.walkDirsForPatternWithChecker(gp, checker, func(dir string) {
+		s.addPatternDirWatch(gp, dir)
+	})
 }
 
 // rollbackPattern undoes what AddPattern registers before its initial
@@ -1385,12 +1424,16 @@ func (s *State) watchDirsForPattern(gp *GlobPattern) {
 // watches: it is reported by the status API and persisted to the backup, and a
 // later RemovePattern walks the tree decrementing refcounts it never
 // incremented, which can release a watch another pattern still needs.
-func (s *State) rollbackPattern(gp *GlobPattern, createdGroup bool) {
+func (s *State) rollbackPattern(gp, prev *GlobPattern, createdGroup bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, p := range s.patterns {
 		if p == gp {
-			s.patterns = append(s.patterns[:i], s.patterns[i+1:]...)
+			if prev != nil {
+				s.patterns[i] = prev
+			} else {
+				s.patterns = append(s.patterns[:i], s.patterns[i+1:]...)
+			}
 			break
 		}
 	}
@@ -1439,7 +1482,14 @@ func (s *State) addFileWatch(absPath, canonical string) {
 	s.registerPathAlias(absPath, canonical)
 }
 
-func (s *State) addDirWatch(dir string) {
+func (s *State) addPatternDirWatch(gp *GlobPattern, dir string) {
+	s.mu.RLock()
+	_, already := gp.watchedDirs[dir]
+	s.mu.RUnlock()
+	if already {
+		return
+	}
+
 	canonical := resolvePathAlias(dir)
 	target := dir
 	if canonical != "" {
@@ -1448,6 +1498,15 @@ func (s *State) addDirWatch(dir string) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !slices.Contains(s.patterns, gp) {
+		return
+	}
+	if gp.watchedDirs == nil {
+		gp.watchedDirs = make(map[string]struct{})
+	}
+	if _, exists := gp.watchedDirs[dir]; exists {
+		return
+	}
 	if s.watchedDirs == nil {
 		s.watchedDirs = make(map[string]int)
 	}
@@ -1456,12 +1515,14 @@ func (s *State) addDirWatch(dir string) {
 	}
 	s.watchedDirs[dir]++
 	if s.watchedDirs[dir] > 1 {
+		gp.watchedDirs[dir] = struct{}{}
 		return
 	}
 
 	s.watchTargets[target]++
 	if s.watchTargets[target] > 1 {
 		s.registerPathAlias(dir, canonical)
+		gp.watchedDirs[dir] = struct{}{}
 		return
 	}
 	if s.watcher != nil {
@@ -1473,6 +1534,7 @@ func (s *State) addDirWatch(dir string) {
 		}
 	}
 	s.registerPathAlias(dir, canonical)
+	gp.watchedDirs[dir] = struct{}{}
 }
 
 func (s *State) handleCreateForGlobs(path string) {
@@ -1492,11 +1554,16 @@ func (s *State) handleCreateForGlobs(path string) {
 
 	if info.IsDir() {
 		var covering []*GlobPattern
-		anyNoIgnore := false
+		anyIncludeIgnored := false
+		anySkipIgnored := false
 		for _, gp := range patterns {
 			if gp.IsRecursive() && pathWithinBase(path, gp.BaseDir) {
 				covering = append(covering, gp)
-				anyNoIgnore = anyNoIgnore || gp.NoIgnore
+				if gp.skipsIgnored() {
+					anySkipIgnored = true
+				} else {
+					anyIncludeIgnored = true
+				}
 			}
 		}
 		if len(covering) == 0 {
@@ -1505,28 +1572,29 @@ func (s *State) handleCreateForGlobs(path string) {
 
 		// A freshly created directory such as node_modules is not worth
 		// walking when every covering pattern skips git-ignored paths.
-		pathIgnored := gitignore.IsIgnored(path)
-		if pathIgnored && !anyNoIgnore {
-			return
-		}
 		var checker *gitignore.Checker
-		if !pathIgnored {
+		pathIgnored := false
+		if anySkipIgnored {
 			checker = gitignore.NewChecker(path)
+			pathIgnored = checker == nil
+			if pathIgnored && !anyIncludeIgnored {
+				return
+			}
 		}
 		var skip func(string) bool
-		if !anyNoIgnore {
+		if !anyIncludeIgnored {
 			skip = checker.Ignored
 		}
 		// eligible reports whether gp applies to p, which is below the
 		// created directory.
 		eligible := func(gp *GlobPattern, p string) bool {
-			return gp.NoIgnore || (!pathIgnored && !checker.Ignored(p))
+			return !gp.skipsIgnored() || (!pathIgnored && !checker.Ignored(p))
 		}
 
 		if _, err := walkSymlinkTreeSkip(path, func(dir string) {
 			for _, gp := range covering {
 				if eligible(gp, dir) {
-					s.addDirWatch(dir)
+					s.addPatternDirWatch(gp, dir)
 				}
 			}
 		}, func(file string) {
@@ -1545,8 +1613,8 @@ func (s *State) handleCreateForGlobs(path string) {
 
 	// Skip the git lookup entirely when every pattern opted out of it.
 	applicable := patterns
-	if slices.ContainsFunc(patterns, func(gp *GlobPattern) bool { return !gp.NoIgnore }) && gitignore.IsIgnored(path) {
-		applicable = slices.DeleteFunc(slices.Clone(patterns), func(gp *GlobPattern) bool { return !gp.NoIgnore })
+	if slices.ContainsFunc(patterns, (*GlobPattern).skipsIgnored) && gitignore.IsIgnored(path) {
+		applicable = slices.DeleteFunc(slices.Clone(patterns), (*GlobPattern).skipsIgnored)
 	}
 	s.matchAndAddFile(path, applicable)
 }

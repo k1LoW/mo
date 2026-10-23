@@ -215,6 +215,7 @@ func init() {
 }
 
 func run(cmd *cobra.Command, args []string) (retErr error) {
+	clear(noIgnorePatterns)
 	if !foreground || restore != "" {
 		logCleanup, err := logfile.Setup(port)
 		if err != nil {
@@ -730,12 +731,6 @@ func resolveArgs(args []string, watchMode, recursive bool) (files, patterns []st
 			if err != nil {
 				return nil, nil, err
 			}
-			if !noIgnore {
-				base, _ := doublestar.SplitPattern(filepath.ToSlash(abs))
-				if matches, err = filterGitIgnored(filepath.FromSlash(base), matches); err != nil {
-					return nil, nil, err
-				}
-			}
 			if len(matches) == 0 {
 				return nil, nil, fmt.Errorf("no files matched %s", arg)
 			}
@@ -760,11 +755,6 @@ func resolveArgs(args []string, watchMode, recursive bool) (files, patterns []st
 			if err != nil {
 				return nil, nil, err
 			}
-			if !noIgnore {
-				if matches, err = filterGitIgnored(abs, matches); err != nil {
-					return nil, nil, err
-				}
-			}
 			if len(matches) == 0 {
 				return nil, nil, fmt.Errorf("no .md files in %s", abs)
 			}
@@ -784,8 +774,13 @@ func markdownGlobFor(recursive bool) string {
 }
 
 func expandGlobPattern(absPattern string) ([]string, error) {
-	base, rel := doublestar.SplitPattern(filepath.ToSlash(absPattern))
-	rels, err := doublestar.Glob(os.DirFS(base), rel, doublestar.WithFilesOnly())
+	baseSlash, rel := doublestar.SplitPattern(filepath.ToSlash(absPattern))
+	base := filepath.FromSlash(baseSlash)
+	var checker *gitignore.Checker
+	if !noIgnore {
+		checker = gitignore.NewChecker(base)
+	}
+	rels, err := doublestar.Glob(checker.DirFS(base), rel, doublestar.WithFilesOnly())
 	if err != nil {
 		return nil, fmt.Errorf("failed to expand glob %s: %w", absPattern, err)
 	}
@@ -795,23 +790,6 @@ func expandGlobPattern(absPattern string) ([]string, error) {
 	}
 	collate.New(language.Und, collate.Numeric).SortStrings(matches)
 	return matches, nil
-}
-
-// filterGitIgnored removes files ignored by git from files. dir is used as the
-// working directory for git. If dir is not inside a git repository, files is
-// returned unchanged.
-func filterGitIgnored(dir string, files []string) ([]string, error) {
-	if len(files) == 0 {
-		return files, nil
-	}
-	checker := gitignore.NewChecker(dir)
-	filtered := make([]string, 0, len(files))
-	for _, f := range files {
-		if !checker.Ignored(f) {
-			filtered = append(filtered, f)
-		}
-	}
-	return filtered, nil
 }
 
 func postFiles(client *http.Client, addr, group string, files []string) []deeplinkEntry {

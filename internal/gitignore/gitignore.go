@@ -5,9 +5,12 @@ package gitignore
 
 import (
 	"bytes"
+	"io/fs"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -69,10 +72,61 @@ func (c *Checker) Ignored(path string) bool {
 	return false
 }
 
+// DirFS returns an fs.FS rooted at dir that hides entries ignored by c.
+// When c is nil, it returns os.DirFS(dir) directly.
+func (c *Checker) DirFS(dir string) fs.FS {
+	fsys := os.DirFS(dir)
+	if c == nil || len(c.ignored) == 0 {
+		return fsys
+	}
+	return &ignoreFS{FS: fsys, base: dir, checker: c}
+}
+
+type ignoreFS struct {
+	fs.FS
+	base    string
+	checker *Checker
+}
+
+func (f *ignoreFS) Open(name string) (fs.File, error) {
+	if name != "." && f.checker.Ignored(filepath.Join(f.base, filepath.FromSlash(name))) {
+		return nil, fs.ErrNotExist
+	}
+	return f.FS.Open(name)
+}
+
+func (f *ignoreFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name != "." && f.checker.Ignored(filepath.Join(f.base, filepath.FromSlash(name))) {
+		return nil, fs.ErrNotExist
+	}
+	entries, err := fs.ReadDir(f.FS, name)
+	if err != nil {
+		return nil, err
+	}
+	relDir := filepath.FromSlash(name)
+	return slices.DeleteFunc(entries, func(e fs.DirEntry) bool {
+		return f.checker.Ignored(filepath.Join(f.base, relDir, e.Name()))
+	}), nil
+}
+
+func (f *ignoreFS) Stat(name string) (fs.FileInfo, error) {
+	if name != "." && f.checker.Ignored(filepath.Join(f.base, filepath.FromSlash(name))) {
+		return nil, fs.ErrNotExist
+	}
+	return fs.Stat(f.FS, name)
+}
+
 // IsIgnored reports whether a single path is ignored by git, including when
 // one of its parent directories is ignored. It returns false when git is
 // unavailable or path is not in a git repository.
 func IsIgnored(path string) bool {
-	err := exec.Command("git", "-C", filepath.Dir(path), "check-ignore", "-q", "--", path).Run() //nolint:gosec
+	path = filepath.Clean(path)
+	dir := filepath.Dir(path)
+	target := filepath.Base(path)
+	if info, err := os.Lstat(path); err == nil && info.IsDir() {
+		dir = path
+		target = "."
+	}
+	err := exec.Command("git", "-C", dir, "check-ignore", "-q", "--", target).Run() //nolint:gosec
 	return err == nil
 }

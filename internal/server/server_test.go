@@ -3064,6 +3064,21 @@ func TestAddPattern_GitIgnore(t *testing.T) {
 		t.Errorf("after create events: got %d files, want 2 (a.md, new.md)", got)
 	}
 
+	// Re-adding the same pattern with WithNoIgnore(true) upgrades it in place.
+	entries, err = s.AddPattern(pattern, "default", WithNoIgnore(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 4 {
+		t.Errorf("upgrade to WithNoIgnore: got %d entries, want 4", len(entries))
+	}
+	if got := len(s.groups["default"].Files); got != 4 {
+		t.Errorf("after upgrade: got %d files, want 4", got)
+	}
+	if data := s.snapshotRestoreData(); len(data.NoIgnorePatterns["default"]) != 1 {
+		t.Errorf("NoIgnorePatterns not recorded after upgrade: %v", data.NoIgnorePatterns)
+	}
+
 	s2 := NewState(ctx)
 	entries, err = s2.AddPattern(pattern, "default", WithNoIgnore(true))
 	if err != nil {
@@ -3074,5 +3089,90 @@ func TestAddPattern_GitIgnore(t *testing.T) {
 	}
 	if data := s2.snapshotRestoreData(); len(data.NoIgnorePatterns["default"]) != 1 {
 		t.Errorf("NoIgnorePatterns not recorded in restore data: %v", data.NoIgnorePatterns)
+	}
+}
+
+func TestAddPattern_DirectIgnoredDirWatchesNewFiles(t *testing.T) {
+	d := t.TempDir()
+	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
+		t.Skip("git unavailable")
+	}
+	ignoredRoot := filepath.Join(d, "node_modules", "pkg")
+	if err := os.MkdirAll(ignoredRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for p, c := range map[string]string{
+		".gitignore":              "node_modules\n",
+		"node_modules/pkg/one.md": "# one",
+	} {
+		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := donegroup.WithCancel(context.Background())
+	defer cancel()
+
+	s := NewState(ctx)
+	pattern := filepath.Join(ignoredRoot, "**", "*.md")
+	entries, err := s.AddPattern(pattern, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d initial entries, want 1", len(entries))
+	}
+
+	sub := filepath.Join(ignoredRoot, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	two := filepath.Join(sub, "two.md")
+	if err := os.WriteFile(two, []byte("# two"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.handleCreateForGlobs(sub)
+
+	three := filepath.Join(ignoredRoot, "three.md")
+	if err := os.WriteFile(three, []byte("# three"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.handleCreateForGlobs(three)
+
+	if got := len(s.groups["default"].Files); got != 3 {
+		t.Errorf("after creating files in directly watched ignored dir: got %d files, want 3", got)
+	}
+}
+
+func TestRemovePattern_ReleasesWatchAfterGitignoreChange(t *testing.T) {
+	d := t.TempDir()
+	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
+		t.Skip("git unavailable")
+	}
+	buildDir := filepath.Join(d, "build")
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := donegroup.WithCancel(context.Background())
+	defer cancel()
+
+	s := NewState(ctx)
+	pattern := filepath.Join(d, "**", "*.md")
+	if _, err := s.AddPattern(pattern, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if !s.isWatchedDir(buildDir) {
+		t.Fatalf("expected %q to be watched before .gitignore update", buildDir)
+	}
+
+	if err := os.WriteFile(filepath.Join(d, ".gitignore"), []byte("build\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !s.RemovePattern(pattern, "default") {
+		t.Fatal("RemovePattern returned false")
+	}
+	if s.isWatchedDir(buildDir) {
+		t.Errorf("expected watch on %q to be released by RemovePattern after .gitignore update", buildDir)
 	}
 }
