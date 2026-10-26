@@ -127,6 +127,12 @@ $ mo -R docs/                                  # Open every .md under docs/ (rec
 $ mo 'docs/*.md'                               # Expand and open matching .md files
 ```
 
+Git-ignored files (e.g. `node_modules`) are skipped when expanding directories and globs, including in `--watch` mode. Use `--no-ignore` to include them. Files given explicitly are always opened.
+
+``` console
+$ mo -R --no-ignore .                          # Include git-ignored files
+```
+
 #### Removing watch patterns
 
 `--unwatch` removes previously registered patterns. Pass glob patterns or directories as positional arguments to specify which patterns to remove. Regular file paths are not accepted (use `--close` to remove individual files from the sidebar). Files already added by a pattern remain in the sidebar.
@@ -266,6 +272,7 @@ $ mo --status --json
 | `--watch` | `-w` | `false` | Treat directory and glob arguments as watch patterns |
 | `--unwatch` | | `false` | Remove watched patterns for the given directory or glob arguments |
 | `--recursive` | `-R` | `false` | Recurse into subdirectories when a directory is given |
+| `--no-ignore` | | `false` | Do not exclude git-ignored files when expanding directory and glob arguments (including `--watch`) |
 | `--close` | | | Close files instead of opening them |
 | `--shutdown` | | | Shut down the running mo server |
 | `--restart` | | | Restart the running mo server |
