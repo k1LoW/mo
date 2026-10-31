@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.7.1](https://github.com/k1LoW/mo/compare/v1.7.0...v1.7.1) - 2026-10-31
+
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group across 1 directory with 13 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/321
+- chore(deps): bump github.com/bmatcuk/doublestar/v4 from 4.10.3 to 4.10.4 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/320
+
 ## [v1.7.0](https://github.com/k1LoW/mo/compare/v1.6.9...v1.7.0) - 2026-10-21
 
 ### New Features 🎉
