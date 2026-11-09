@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1066,6 +1067,67 @@ func TestAddToRunningServer_PatternWithZeroMatches(t *testing.T) {
 	}
 }
 
+func TestPostPatterns_SendsNoIgnore(t *testing.T) {
+	t.Cleanup(func() { clear(noIgnorePatterns) })
+	markNoIgnore("default", "/a/**/*.md")
+
+	got := map[string]bool{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /_/api/patterns", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode: %v", err)
+		}
+		v, ok := req["noIgnore"].(bool)
+		if !ok {
+			t.Errorf("noIgnore missing from %v", req)
+		}
+		pattern, _ := req["pattern"].(string)
+		got[pattern] = v
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(server.AddPatternResponse{}) //nolint:errcheck
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	postPatterns(srv.Client(), addr, "default", []string{"/a/**/*.md", "/b/**/*.md"})
+	want := map[string]bool{"/a/**/*.md": true, "/b/**/*.md": false}
+	if !maps.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestRestoreNoIgnore(t *testing.T) {
+	t.Cleanup(func() { clear(noIgnorePatterns) })
+	saved := map[string][]string{
+		"default": {"/cli/**/*.md", "/other/**/*.md"},
+		"design":  {"/cli/**/*.md"},
+	}
+
+	// The command line gives /cli/**/*.md without --no-ignore.
+	setNoIgnore("default", false, "/cli/**/*.md")
+	restoreNoIgnore(saved, "default", []string{"/cli/**/*.md"})
+
+	tests := []struct {
+		group, pattern string
+		want           bool
+	}{
+		{"default", "/cli/**/*.md", false},
+		{"default", "/other/**/*.md", true},
+		{"design", "/cli/**/*.md", true},
+	}
+	for _, tt := range tests {
+		if got := isNoIgnore(tt.group, tt.pattern); got != tt.want {
+			t.Errorf("isNoIgnore(%q, %q) = %v, want %v", tt.group, tt.pattern, got, tt.want)
+		}
+	}
+	snapshot := noIgnoreSnapshot()
+	if !slices.Equal(snapshot["default"], []string{"/other/**/*.md"}) || !slices.Equal(snapshot["design"], []string{"/cli/**/*.md"}) {
+		t.Errorf("noIgnoreSnapshot() = %v", snapshot)
+	}
+}
+
 func TestIsLoopbackBind(t *testing.T) {
 	tests := []struct {
 		name string
@@ -1416,8 +1478,11 @@ func TestResolveArgs_MixedFilesAndDirs(t *testing.T) {
 
 func TestResolveArgs_RespectGitignore(t *testing.T) {
 	d := t.TempDir()
-	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
-		t.Skip("git unavailable")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(d, ".git"), 0o755); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(d, "node_modules", "x"), 0o755); err != nil {
 		t.Fatal(err)

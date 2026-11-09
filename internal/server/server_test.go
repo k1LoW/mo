@@ -12,7 +12,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -3014,11 +3013,22 @@ func TestWalkDirsForPattern_SkipsUnresolvableNonDirEntries(t *testing.T) {
 	}
 }
 
+// initGitRepo marks d as a repository root without the git command, and keeps
+// the developer's ~/.gitconfig out of the test.
+func initGitRepo(t *testing.T, d string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	if err := os.Mkdir(filepath.Join(d, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAddPattern_GitIgnore(t *testing.T) {
 	d := t.TempDir()
-	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
-		t.Skip("git unavailable")
-	}
+	initGitRepo(t, d)
 	if err := os.MkdirAll(filepath.Join(d, "node_modules", "x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -3078,6 +3088,43 @@ func TestAddPattern_GitIgnore(t *testing.T) {
 	if data := s.snapshotRestoreData(); len(data.NoIgnorePatterns["default"]) != 1 {
 		t.Errorf("NoIgnorePatterns not recorded after upgrade: %v", data.NoIgnorePatterns)
 	}
+	ignoredDirs := []string{
+		filepath.Join(d, "node_modules"),
+		filepath.Join(d, "node_modules", "x"),
+		filepath.Join(d, "node_modules", "y"),
+	}
+	for _, dir := range ignoredDirs {
+		if !s.isWatchedDir(dir) {
+			t.Errorf("after upgrade: %q should be watched", dir)
+		}
+	}
+
+	// Re-adding it without WithNoIgnore downgrades it again: the last setting
+	// wins. Files already open stay open, but the ignored directories are no
+	// longer watched.
+	if _, err := s.AddPattern(pattern, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(s.groups["default"].Files); got != 4 {
+		t.Errorf("after downgrade: got %d files, want 4", got)
+	}
+	for _, dir := range ignoredDirs {
+		if s.isWatchedDir(dir) {
+			t.Errorf("after downgrade: %q should not be watched", dir)
+		}
+	}
+	if !s.isWatchedDir(d) {
+		t.Errorf("after downgrade: %q should still be watched", d)
+	}
+	if data := s.snapshotRestoreData(); len(data.NoIgnorePatterns) != 0 {
+		t.Errorf("NoIgnorePatterns should be cleared after downgrade: %v", data.NoIgnorePatterns)
+	}
+	if !s.RemovePattern(pattern, "default") {
+		t.Fatal("RemovePattern returned false")
+	}
+	if s.isWatchedDir(d) {
+		t.Errorf("after RemovePattern: %q should not be watched", d)
+	}
 
 	s2 := NewState(ctx)
 	entries, err = s2.AddPattern(pattern, "default", WithNoIgnore(true))
@@ -3094,9 +3141,7 @@ func TestAddPattern_GitIgnore(t *testing.T) {
 
 func TestAddPattern_DirectIgnoredDirWatchesNewFiles(t *testing.T) {
 	d := t.TempDir()
-	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
-		t.Skip("git unavailable")
-	}
+	initGitRepo(t, d)
 	ignoredRoot := filepath.Join(d, "node_modules", "pkg")
 	if err := os.MkdirAll(ignoredRoot, 0o755); err != nil {
 		t.Fatal(err)
@@ -3146,9 +3191,7 @@ func TestAddPattern_DirectIgnoredDirWatchesNewFiles(t *testing.T) {
 
 func TestRemovePattern_ReleasesWatchAfterGitignoreChange(t *testing.T) {
 	d := t.TempDir()
-	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
-		t.Skip("git unavailable")
-	}
+	initGitRepo(t, d)
 	buildDir := filepath.Join(d, "build")
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		t.Fatal(err)

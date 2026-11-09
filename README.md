@@ -127,7 +127,7 @@ $ mo -R docs/                                  # Open every .md under docs/ (rec
 $ mo 'docs/*.md'                               # Expand and open matching .md files
 ```
 
-Git-ignored files (e.g. `node_modules`) are skipped when expanding directories and globs, including in `--watch` mode. Use `--no-ignore` to include them. Files given explicitly are always opened.
+Git-ignored files (e.g. `node_modules`) are skipped when expanding directories and globs, including in `--watch` mode. Use `--no-ignore` to include them. Files given explicitly are always opened. mo reads `.gitignore`, `.git/info/exclude` and `core.excludesFile` itself, so the `git` command is not needed. Watching the same pattern again with or without `--no-ignore` replaces the earlier setting.
 
 ``` console
 $ mo -R --no-ignore .                          # Include git-ignored files

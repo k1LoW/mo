@@ -3,31 +3,48 @@ package gitignore
 import (
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"testing"
 )
 
+// isolateGitConfig keeps the developer's ~/.gitconfig (and its
+// core.excludesFile) out of the test.
+func isolateGitConfig(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	return home
+}
+
+func writeFiles(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for p, c := range files {
+		path := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(c), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func setupRepo(t *testing.T) string {
 	t.Helper()
+	isolateGitConfig(t)
 	d := t.TempDir()
-	if err := exec.Command("git", "-C", d, "init", "-q").Run(); err != nil {
-		t.Skip("git unavailable")
-	}
-	if err := os.MkdirAll(filepath.Join(d, "node_modules", "x"), 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(d, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for p, c := range map[string]string{
+	writeFiles(t, d, map[string]string{
 		".gitignore":          "node_modules\nsecret.md\n",
 		"a.md":                "",
 		"secret.md":           "",
 		"node_modules/x/b.md": "",
-	} {
-		if err := os.WriteFile(filepath.Join(d, p), []byte(c), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	})
 	return d
 }
 
@@ -44,9 +61,129 @@ func TestChecker(t *testing.T) {
 		{"node_modules/x/b.md", true},
 	}
 	for _, tt := range tests {
-		if got := c.Ignored(filepath.Join(d, tt.rel)); got != tt.want {
+		if got := c.Ignored(filepath.Join(d, filepath.FromSlash(tt.rel))); got != tt.want {
 			t.Errorf("Ignored(%q) = %v, want %v", tt.rel, got, tt.want)
 		}
+	}
+}
+
+func TestChecker_Rules(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+		rel   string
+		want  bool
+	}{
+		{
+			name:  "nested .gitignore applies below its directory",
+			files: map[string]string{"docs/.gitignore": "draft.md\n", "docs/draft.md": ""},
+			rel:   "docs/draft.md",
+			want:  true,
+		},
+		{
+			name:  "nested .gitignore does not apply outside its directory",
+			files: map[string]string{"docs/.gitignore": "draft.md\n", "draft.md": ""},
+			rel:   "draft.md",
+			want:  false,
+		},
+		{
+			name:  "directory-only pattern does not match a file",
+			files: map[string]string{".gitignore": "build/\n", "build": ""},
+			rel:   "build",
+			want:  false,
+		},
+		{
+			name:  "negation cannot re-include a file inside an ignored directory",
+			files: map[string]string{".gitignore": "build/\n!build/keep.md\n", "build/keep.md": ""},
+			rel:   "build/keep.md",
+			want:  true,
+		},
+		{
+			name:  "negation re-includes a file",
+			files: map[string]string{".gitignore": "*.md\n!keep.md\n", "keep.md": ""},
+			rel:   "keep.md",
+			want:  false,
+		},
+		{
+			name:  "info/exclude is honored",
+			files: map[string]string{".git/info/exclude": "local.md\n", "local.md": ""},
+			rel:   "local.md",
+			want:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isolateGitConfig(t)
+			d := t.TempDir()
+			if err := os.Mkdir(filepath.Join(d, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFiles(t, d, tt.files)
+			if got := NewChecker(d).Ignored(filepath.Join(d, filepath.FromSlash(tt.rel))); got != tt.want {
+				t.Errorf("Ignored(%q) = %v, want %v", tt.rel, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestChecker_GlobalExcludesFile(t *testing.T) {
+	home := isolateGitConfig(t)
+	excludes := filepath.Join(home, "global-ignore")
+	writeFiles(t, home, map[string]string{
+		".gitconfig":    "[core]\n\texcludesFile = " + filepath.ToSlash(excludes) + "\n",
+		"global-ignore": "*.tmp.md\n",
+	})
+	d := t.TempDir()
+	if err := os.Mkdir(filepath.Join(d, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, d, map[string]string{"x.tmp.md": ""})
+	if !NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
+		t.Error("x.tmp.md should be ignored by core.excludesFile")
+	}
+}
+
+func TestChecker_DefaultGlobalIgnore(t *testing.T) {
+	home := isolateGitConfig(t)
+	writeFiles(t, home, map[string]string{".config/git/ignore": "*.tmp.md\n"})
+	d := t.TempDir()
+	if err := os.Mkdir(filepath.Join(d, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, d, map[string]string{"x.tmp.md": ""})
+	if !NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
+		t.Error("x.tmp.md should be ignored by $XDG_CONFIG_HOME/git/ignore")
+	}
+}
+
+func TestChecker_LinkedWorktree(t *testing.T) {
+	isolateGitConfig(t)
+	main := t.TempDir()
+	gitDir := filepath.Join(main, ".git", "worktrees", "wt")
+	writeFiles(t, main, map[string]string{
+		".git/info/exclude":           "local.md\n",
+		".git/worktrees/wt/commondir": "../..\n",
+	})
+	wt := t.TempDir()
+	writeFiles(t, wt, map[string]string{
+		".git":       "gitdir: " + gitDir + "\n",
+		".gitignore": "dist\n",
+		"dist/x.md":  "",
+		"local.md":   "",
+		"a.md":       "",
+	})
+	c := NewChecker(wt)
+	if c == nil {
+		t.Fatal("NewChecker(worktree) returned nil")
+	}
+	if !c.Ignored(filepath.Join(wt, "dist", "x.md")) {
+		t.Error("dist/x.md should be ignored by the worktree's .gitignore")
+	}
+	if !c.Ignored(filepath.Join(wt, "local.md")) {
+		t.Error("local.md should be ignored by the main repository's info/exclude")
+	}
+	if c.Ignored(filepath.Join(wt, "a.md")) {
+		t.Error("a.md should not be ignored")
 	}
 }
 
@@ -58,48 +195,41 @@ func TestChecker_IgnoredRootIsNotFiltered(t *testing.T) {
 	}
 }
 
+func TestChecker_SubdirectoryRoot(t *testing.T) {
+	d := setupRepo(t)
+	writeFiles(t, d, map[string]string{"docs/secret.md": "", "docs/a.md": ""})
+	c := NewChecker(filepath.Join(d, "docs"))
+	if c == nil {
+		t.Fatal("NewChecker(subdirectory) returned nil")
+	}
+	if !c.Ignored(filepath.Join(d, "docs", "secret.md")) {
+		t.Error("docs/secret.md should be ignored by the repository root's .gitignore")
+	}
+	if c.Ignored(filepath.Join(d, "docs", "a.md")) {
+		t.Error("docs/a.md should not be ignored")
+	}
+}
+
 func TestChecker_NotARepository(t *testing.T) {
+	isolateGitConfig(t)
 	c := NewChecker(t.TempDir())
 	if c.Ignored("/anything") {
 		t.Error("nil checker must ignore nothing")
 	}
 }
 
-func TestIsIgnored(t *testing.T) {
-	d := setupRepo(t)
-	if !IsIgnored(filepath.Join(d, "node_modules", "x", "b.md")) {
-		t.Error("file below ignored directory should be ignored")
-	}
-	if !IsIgnored(filepath.Join(d, "node_modules")) {
-		t.Error("ignored directory should be ignored")
-	}
-	if IsIgnored(filepath.Join(d, "a.md")) {
-		t.Error("a.md should not be ignored")
-	}
-}
-
 func TestChecker_SubrepoInsideIgnoredParentDir(t *testing.T) {
 	parent := setupRepo(t)
 	subrepo := filepath.Join(parent, "node_modules", "subrepo")
-	if err := os.MkdirAll(filepath.Join(subrepo, "dist"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(subrepo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := exec.Command("git", "-C", subrepo, "init", "-q").Run(); err != nil {
-		t.Fatal(err)
-	}
-	for p, c := range map[string]string{
+	writeFiles(t, subrepo, map[string]string{
 		".gitignore": "dist\n",
 		"keep.md":    "# keep",
 		"dist/x.md":  "# ignored in subrepo",
-	} {
-		if err := os.WriteFile(filepath.Join(subrepo, p), []byte(c), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	})
 
-	if IsIgnored(subrepo) {
-		t.Fatal("subrepo root should not be treated as ignored by parent repo")
-	}
 	c := NewChecker(subrepo)
 	if c == nil {
 		t.Fatal("NewChecker(subrepo) returned nil")
