@@ -27,6 +27,7 @@ import (
 
 	"github.com/k1LoW/donegroup"
 	"github.com/k1LoW/mo/internal/backup"
+	"github.com/k1LoW/mo/internal/gitignore"
 	"github.com/k1LoW/mo/internal/logfile"
 	"github.com/k1LoW/mo/internal/server"
 	"github.com/k1LoW/mo/version"
@@ -73,6 +74,7 @@ var (
 	clearBackup                  bool
 	jsonOutput                   bool
 	dangerouslyAllowRemoteAccess bool
+	noIgnore                     bool
 )
 
 var rootCmd = &cobra.Command{
@@ -208,10 +210,12 @@ func init() {
 	rootCmd.Flags().BoolVar(&closeFiles, "close", false, "Close files instead of opening them")
 	rootCmd.Flags().BoolVar(&clearBackup, "clear", false, "Clear saved session for the specified port")
 	rootCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output structured data as JSON to stdout")
+	rootCmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "Do not exclude git-ignored files when expanding directory and glob arguments (including --watch)")
 	rootCmd.Flags().BoolVar(&dangerouslyAllowRemoteAccess, "dangerously-allow-remote-access", false, "Allow remote access without authentication. Recommended only for trusted networks.")
 }
 
 func run(cmd *cobra.Command, args []string) (retErr error) {
+	clear(noIgnorePatterns)
 	if !foreground || restore != "" {
 		logCleanup, err := logfile.Setup(port)
 		if err != nil {
@@ -365,6 +369,9 @@ func run(cmd *cobra.Command, args []string) (retErr error) {
 	if err != nil {
 		return err
 	}
+	if noIgnore {
+		markNoIgnore(target, patterns...)
+	}
 
 	if watchMode && len(patterns) == 0 {
 		if len(files) > 0 {
@@ -459,6 +466,9 @@ func run(cmd *cobra.Command, args []string) (retErr error) {
 		slog.Warn("failed to load backup", "error", err)
 	}
 	restoredFiles, restoredPatterns, restoredUploads := filterValidRestoreData(&rd)
+	for group, pats := range rd.NoIgnorePatterns {
+		markNoIgnore(group, pats...)
+	}
 	var uploadedFiles []server.UploadedFileData
 	if len(restoredFiles) > 0 || len(restoredPatterns) > 0 || len(restoredUploads) > 0 {
 		slog.Info("restoring session from backup", "port", port)
@@ -565,7 +575,41 @@ func loadRestoreData(path string) (map[string][]string, map[string][]string, []s
 	if err := json.Unmarshal(data, &rd); err != nil {
 		return nil, nil, nil, err
 	}
+	for group, pats := range rd.NoIgnorePatterns {
+		markNoIgnore(group, pats...)
+	}
 	return rd.Groups, rd.Patterns, rd.UploadedFiles, nil
+}
+
+// noIgnorePatterns records the watch patterns (by group) that opted out of
+// git-ignore filtering. The pattern lists travel through the CLI as plain
+// strings, so the opt-out is tracked here and handed to the server when each
+// pattern is registered, and persisted in the restore data.
+var noIgnorePatterns = map[string]map[string]struct{}{}
+
+func markNoIgnore(group string, patterns ...string) {
+	for _, p := range patterns {
+		if noIgnorePatterns[group] == nil {
+			noIgnorePatterns[group] = make(map[string]struct{})
+		}
+		noIgnorePatterns[group][p] = struct{}{}
+	}
+}
+
+func isNoIgnore(group, pattern string) bool {
+	_, ok := noIgnorePatterns[group][pattern]
+	return ok
+}
+
+func noIgnoreSnapshot() map[string][]string {
+	if len(noIgnorePatterns) == 0 {
+		return nil
+	}
+	snapshot := make(map[string][]string, len(noIgnorePatterns))
+	for group, pats := range noIgnorePatterns {
+		snapshot[group] = slices.Sorted(maps.Keys(pats))
+	}
+	return snapshot
 }
 
 func isLoopbackBind(bind string) bool {
@@ -730,8 +774,13 @@ func markdownGlobFor(recursive bool) string {
 }
 
 func expandGlobPattern(absPattern string) ([]string, error) {
-	base, rel := doublestar.SplitPattern(filepath.ToSlash(absPattern))
-	rels, err := doublestar.Glob(os.DirFS(base), rel, doublestar.WithFilesOnly())
+	baseSlash, rel := doublestar.SplitPattern(filepath.ToSlash(absPattern))
+	base := filepath.FromSlash(baseSlash)
+	var checker *gitignore.Checker
+	if !noIgnore {
+		checker = gitignore.NewChecker(base)
+	}
+	rels, err := doublestar.Glob(checker.DirFS(base), rel, doublestar.WithFilesOnly())
 	if err != nil {
 		return nil, fmt.Errorf("failed to expand glob %s: %w", absPattern, err)
 	}
@@ -791,10 +840,14 @@ func postPatterns(client *http.Client, addr, group string, patterns []string) ([
 	var entries []deeplinkEntry
 	added := 0
 	for _, pat := range patterns {
-		body, err := json.Marshal(map[string]string{
+		payload := map[string]any{
 			"pattern": pat,
 			"group":   group,
-		})
+		}
+		if isNoIgnore(group, pat) {
+			payload["noIgnore"] = true
+		}
+		body, err := json.Marshal(payload)
 		if err != nil {
 			slog.Warn("failed to marshal request", "pattern", pat, "error", err)
 			continue
@@ -1365,7 +1418,7 @@ func startServer(ctx context.Context, addr string, filesByGroup map[string][]str
 	var patternsAdded int
 	for group, pats := range patternsByGroup {
 		for _, pat := range pats {
-			entries, err := state.AddPattern(pat, group)
+			entries, err := state.AddPattern(pat, group, server.WithNoIgnore(isNoIgnore(group, pat)))
 			if err != nil {
 				slog.Warn("failed to add pattern", "pattern", pat, "error", err)
 				continue
@@ -1470,7 +1523,7 @@ func spawnNewProcess(addr string, restoreFile string) (*os.Process, error) {
 }
 
 func startBackground(addr string, filesByGroup map[string][]string, patternsByGroup map[string][]string, uploadedFiles []server.UploadedFileData) error {
-	restoreFile, err := server.WriteRestoreFile(server.RestoreData{Groups: filesByGroup, Patterns: patternsByGroup, UploadedFiles: uploadedFiles})
+	restoreFile, err := server.WriteRestoreFile(server.RestoreData{Groups: filesByGroup, Patterns: patternsByGroup, NoIgnorePatterns: noIgnoreSnapshot(), UploadedFiles: uploadedFiles})
 	if err != nil {
 		return err
 	}
