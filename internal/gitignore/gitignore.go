@@ -1,6 +1,7 @@
 // Package gitignore answers "is this path ignored by git?" by evaluating
-// .gitignore, .git/info/exclude and the core.excludesFile of the user and
-// system git config with go-git's pattern matcher.
+// .gitignore, .git/info/exclude, core.excludesFile and the index the way git
+// does, with a port of git's wildmatch for the rules and go-git for decoding
+// the index and config.
 //
 // It reads those files directly rather than running the git command, so mo
 // does not depend on git being installed, and browsing a directory never
@@ -23,7 +24,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-git/go-git/v5/plumbing/format/config"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
@@ -43,6 +43,7 @@ type Checker struct {
 	// from.
 	real string
 	repo string // working tree root of the repository containing real
+	fold bool   // core.ignoreCase
 	base []gitignore.Pattern
 	// tracked holds the slash-separated paths of the files in the index and
 	// of every directory above them. git never reports a tracked path as
@@ -85,11 +86,14 @@ func NewChecker(root string) *Checker {
 	if !ok {
 		return nil
 	}
+	commonDir := commonGitDir(gitDir)
+	fold := ignoreCase(commonDir)
 	c := &Checker{
 		root:    root,
 		real:    real,
 		repo:    repo,
-		base:    loadBasePatterns(gitDir, gitDirs, real),
+		fold:    fold,
+		base:    loadBasePatterns(commonDir, gitDirs, real, fold),
 		tracked: tracked,
 		dirs:    make(map[string][]gitignore.Pattern),
 	}
@@ -135,7 +139,7 @@ func (c *Checker) resolve(path string) string {
 // match reports whether path, or one of its parent directories strictly
 // below from, is ignored. Parents are checked before path itself because git
 // never looks inside an ignored directory, so a negation pattern cannot bring
-// back a file below one, while go-git's Matcher alone would let it.
+// back a file below one.
 func (c *Checker) match(path string, isDir bool, from string) bool {
 	rel, err := filepath.Rel(c.repo, path)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -175,7 +179,7 @@ func (c *Checker) dirPatterns(dir string, domain []string) []gitignore.Pattern {
 	}
 	// Like git, refuse a .gitignore that is a symlink, so a browsed tree
 	// cannot point it at something like /dev/zero.
-	ps = readPatterns(filepath.Join(dir, ".gitignore"), domain, true)
+	ps = readPatterns(filepath.Join(dir, ".gitignore"), domain, true, c.fold)
 	c.mu.Lock()
 	c.dirs[dir] = ps
 	c.mu.Unlock()
@@ -257,13 +261,30 @@ func readGitDirFile(path string) (string, bool) {
 
 // loadBasePatterns returns the patterns that apply to the whole repository,
 // lowest priority first.
-func loadBasePatterns(gitDir string, gitDirs []string, root string) []gitignore.Pattern {
-	commonDir := commonGitDir(gitDir)
+func loadBasePatterns(commonDir string, gitDirs []string, root string, fold bool) []gitignore.Pattern {
 	var ps []gitignore.Pattern
 	if f := excludesFile(gitDirs, commonDir, root); f != "" {
-		ps = readPatterns(f, nil, false)
+		ps = readPatterns(f, nil, false, fold)
 	}
-	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false)...)
+	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false, fold)...)
+}
+
+// ignoreCase reads core.ignoreCase from the repository config, which git
+// init sets on case-insensitive file systems.
+func ignoreCase(commonDir string) bool {
+	b, err := readRegularFile(filepath.Join(commonDir, "config"), false)
+	if err != nil {
+		return false
+	}
+	cfg := config.New()
+	if err := config.NewDecoder(bytes.NewReader(b)).Decode(cfg); err != nil {
+		return false
+	}
+	switch strings.ToLower(cfg.Section("core").Options.Get("ignorecase")) {
+	case "true", "yes", "on", "1":
+		return true
+	}
+	return false
 }
 
 // commonGitDir returns the git directory a linked worktree shares with the
@@ -538,15 +559,12 @@ func gitDirMatches(cond, cfgPath, home string, gitDirs []string) bool {
 	if strings.HasSuffix(pat, "/") {
 		pat += "**"
 	}
+	flags := wmPathname
 	if fold {
-		pat = strings.ToLower(pat)
+		flags |= wmCaseFold
 	}
 	for _, gitDir := range gitDirs {
-		target := filepath.ToSlash(gitDir)
-		if fold {
-			target = strings.ToLower(target)
-		}
-		if matched, err := doublestar.Match(pat, target); err == nil && matched {
+		if wildmatch(pat, filepath.ToSlash(gitDir), flags) {
 			return true
 		}
 	}
@@ -560,10 +578,11 @@ func expandHome(p, home string) string {
 	return filepath.FromSlash(p)
 }
 
-// readPatterns parses an ignore file. go-git's own reader is unexported, and
-// its ReadPatterns walks the whole tree up front, which is what a lazily
-// loading Checker avoids.
-func readPatterns(path string, domain []string, nofollow bool) []gitignore.Pattern {
+// readPatterns parses an ignore file. go-git's ReadPatterns is not used
+// because it walks the whole tree up front, which is what a lazily loading
+// Checker avoids. fold makes the rules case-insensitive, as core.ignoreCase
+// does.
+func readPatterns(path string, domain []string, nofollow, fold bool) []gitignore.Pattern {
 	b, err := readRegularFile(path, nofollow)
 	if err != nil {
 		return nil
@@ -574,68 +593,86 @@ func readPatterns(path string, domain []string, nofollow bool) []gitignore.Patte
 		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
-		ps = append(ps, parsePattern(line, domain))
+		ps = append(ps, parsePattern(line, domain, fold))
 	}
 	return ps
 }
 
-// parsePattern parses one ignore rule. Rules with a "**" segment are matched
-// by recursivePattern, because go-git's matcher does not backtrack after
-// "**", so `**/docs/private.md` misses docs/docs/private.md. The rest go to
-// go-git as is.
-func parsePattern(line string, domain []string) gitignore.Pattern {
-	p := line
-	inclusion := strings.HasPrefix(p, "!")
-	if inclusion {
+// wildPattern is one ignore rule, matched the way git's dir.c does it. A
+// rule is applied to the queried path only, never to its parents, because
+// the Checker walks the parents itself. go-git's own patterns also match
+// any parent by name, so `*` followed by `!docs/` brought back
+// docs/private.md, which git keeps ignored.
+type wildPattern struct {
+	domain   []string
+	pattern  string
+	negative bool
+	dirOnly  bool
+	// basename rules have no slash and match the last path segment at any
+	// depth. The others match the path relative to domain.
+	basename bool
+	fold     bool
+}
+
+// parsePattern parses one ignore rule as git's parse_path_pattern does.
+func parsePattern(line string, domain []string, fold bool) gitignore.Pattern {
+	p := trimTrailingSpaces(line)
+	negative := strings.HasPrefix(p, "!")
+	if negative {
 		p = p[1:]
-	}
-	if !strings.HasSuffix(p, "\\ ") {
-		p = strings.TrimRight(p, " ")
 	}
 	dirOnly := strings.HasSuffix(p, "/")
 	p = strings.TrimSuffix(p, "/")
-	segs := strings.Split(strings.TrimPrefix(p, "/"), "/")
-	if !slices.Contains(segs, "**") {
-		return gitignore.ParsePattern(line, domain)
-	}
-	// In git a trailing "**" matches everything inside a directory but not
-	// the directory itself, so a later negation can still reach a file
-	// below it.
-	if segs[len(segs)-1] == "**" {
-		segs = append(segs, "*")
-	}
-	return &recursivePattern{
-		domain:    slices.Clone(domain),
-		glob:      strings.Join(segs, "/"),
-		inclusion: inclusion,
-		dirOnly:   dirOnly,
+	basename := !strings.Contains(p, "/")
+	return &wildPattern{
+		domain:   slices.Clone(domain),
+		pattern:  strings.TrimPrefix(p, "/"),
+		negative: negative,
+		dirOnly:  dirOnly,
+		basename: basename,
+		fold:     fold,
 	}
 }
 
-// recursivePattern is an ignore rule containing a "**" segment, matched with
-// doublestar against the path relative to the directory of its ignore file.
-type recursivePattern struct {
-	domain    []string
-	glob      string
-	inclusion bool
-	dirOnly   bool
+// trimTrailingSpaces drops trailing spaces unless the last one is escaped
+// with a backslash.
+func trimTrailingSpaces(s string) string {
+	t := strings.TrimRight(s, " ")
+	if len(t) == len(s) {
+		return s
+	}
+	backslashes := len(t) - len(strings.TrimRight(t, "\\"))
+	if backslashes%2 == 1 {
+		return t + " "
+	}
+	return t
 }
 
-func (p *recursivePattern) Match(path []string, isDir bool) gitignore.MatchResult {
+func (p *wildPattern) Match(path []string, isDir bool) gitignore.MatchResult {
 	if len(path) <= len(p.domain) || !slices.Equal(path[:len(p.domain)], p.domain) {
 		return gitignore.NoMatch
 	}
 	if p.dirOnly && !isDir {
 		return gitignore.NoMatch
 	}
-	matched, err := doublestar.Match(p.glob, strings.Join(path[len(p.domain):], "/"))
-	if err != nil || !matched {
+	var flags int
+	if p.fold {
+		flags |= wmCaseFold
+	}
+	var matched bool
+	if p.basename {
+		matched = wildmatch(p.pattern, path[len(path)-1], flags)
+	} else {
+		matched = wildmatch(p.pattern, strings.Join(path[len(p.domain):], "/"), flags|wmPathname)
+	}
+	switch {
+	case !matched:
 		return gitignore.NoMatch
-	}
-	if p.inclusion {
+	case p.negative:
 		return gitignore.Include
+	default:
+		return gitignore.Exclude
 	}
-	return gitignore.Exclude
 }
 
 // maxFileSize bounds what is read from a single ignore or config file.

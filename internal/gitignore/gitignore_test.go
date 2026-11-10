@@ -141,6 +141,68 @@ func TestChecker_Rules(t *testing.T) {
 			want:  true,
 		},
 		{
+			name:  "braces are literal",
+			files: map[string]string{".gitignore": "**/{draft,private}.md\n", "{draft,private}.md": ""},
+			rel:   "{draft,private}.md",
+			want:  true,
+		},
+		{
+			name:  "braces are not alternation",
+			files: map[string]string{".gitignore": "**/{draft,private}.md\n", "draft.md": ""},
+			rel:   "draft.md",
+			want:  false,
+		},
+		{
+			name:  "re-including a directory does not re-include its files",
+			files: map[string]string{".gitignore": "*\n!docs/\n", "docs/private.md": ""},
+			rel:   "docs/private.md",
+			want:  true,
+		},
+		{
+			name:  "re-included directory itself is not ignored",
+			files: map[string]string{".gitignore": "*\n!docs/\n", "docs/private.md": ""},
+			rel:   "docs",
+			want:  false,
+		},
+		{
+			name:  "consecutive stars inside a segment act as one",
+			files: map[string]string{".gitignore": "docs/**.md\n", "docs/private.md": ""},
+			rel:   "docs/private.md",
+			want:  true,
+		},
+		{
+			name:  "negated character class excludes its members",
+			files: map[string]string{".gitignore": "[!a]*.md\n", "a.md": ""},
+			rel:   "a.md",
+			want:  false,
+		},
+		{
+			name:  "negated character class matches others",
+			files: map[string]string{".gitignore": "[!a]*.md\n", "b.md": ""},
+			rel:   "b.md",
+			want:  true,
+		},
+		{
+			name: "escaped trailing space is kept",
+			// "x " itself is not created, since Windows drops trailing
+			// spaces from file names.
+			files: map[string]string{".gitignore": "x\\ \n"},
+			rel:   "x ",
+			want:  true,
+		},
+		{
+			name:  "core.ignoreCase folds case",
+			files: map[string]string{".git/config": "[core]\n\tignorecase = true\n", ".gitignore": "Secret.md\n", "secret.md": ""},
+			rel:   "secret.md",
+			want:  true,
+		},
+		{
+			name:  "case matters without core.ignoreCase",
+			files: map[string]string{".gitignore": "Secret.md\n", "secret.md": ""},
+			rel:   "secret.md",
+			want:  false,
+		},
+		{
 			name:  "negation re-includes a file",
 			files: map[string]string{".gitignore": "*.md\n!keep.md\n", "keep.md": ""},
 			rel:   "keep.md",
