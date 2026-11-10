@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/config"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 )
 
 // Checker reports which paths below a root directory are ignored by git. A
@@ -33,6 +35,10 @@ type Checker struct {
 	root string // directory the checker was created for
 	repo string // working tree root of the repository containing root
 	base []gitignore.Pattern
+	// tracked holds the slash-separated paths of the files in the index and
+	// of every directory above them. git never reports a tracked path as
+	// ignored, and does not skip a directory that still holds tracked files.
+	tracked map[string]struct{}
 
 	mu   sync.Mutex
 	dirs map[string][]gitignore.Pattern
@@ -53,10 +59,11 @@ func NewChecker(root string) *Checker {
 		return nil
 	}
 	c := &Checker{
-		root: root,
-		repo: repo,
-		base: loadBasePatterns(gitDir),
-		dirs: make(map[string][]gitignore.Pattern),
+		root:    root,
+		repo:    repo,
+		base:    loadBasePatterns(gitDir),
+		tracked: loadTracked(gitDir),
+		dirs:    make(map[string][]gitignore.Pattern),
 	}
 	if root != repo && c.match(root, true, repo) {
 		return nil
@@ -100,10 +107,16 @@ func (c *Checker) match(path string, isDir bool, from string) bool {
 	for i := range segs {
 		patterns = append(patterns, c.dirPatterns(dir, segs[:i])...)
 		dir = filepath.Join(dir, segs[i])
+		last := i == len(segs)-1
+		if _, ok := c.tracked[strings.Join(segs[:i+1], "/")]; ok {
+			if last {
+				return false
+			}
+			continue
+		}
 		if !pathWithin(dir, from) {
 			continue
 		}
-		last := i == len(segs)-1
 		if gitignore.NewMatcher(patterns).Match(segs[:i+1], isDir || !last) {
 			return true
 		}
@@ -214,6 +227,32 @@ func loadBasePatterns(gitDir string) []gitignore.Pattern {
 		commonDir = cd
 	}
 	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil)...)
+}
+
+// loadTracked reads the index of the repository whose git directory is
+// gitDir. A linked worktree has its own index there, so commondir is not
+// followed. When the index cannot be read every path counts as untracked.
+func loadTracked(gitDir string) map[string]struct{} {
+	f, err := os.Open(filepath.Join(gitDir, "index")) //nolint:gosec
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var idx index.Index
+	if err := index.NewDecoder(bufio.NewReader(f)).Decode(&idx); err != nil {
+		slog.Debug("skipping git index", "dir", gitDir, "error", err)
+		return nil
+	}
+	tracked := make(map[string]struct{}, len(idx.Entries))
+	for _, e := range idx.Entries {
+		for p := e.Name; p != "."; p = path.Dir(p) {
+			if _, ok := tracked[p]; ok {
+				break
+			}
+			tracked[p] = struct{}{}
+		}
+	}
+	return tracked
 }
 
 // excludesFile returns the ignore file git reads for core.excludesFile, or

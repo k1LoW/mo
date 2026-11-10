@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 )
 
 // isolateGitConfig keeps the developer's ~/.gitconfig (and its
@@ -123,6 +126,46 @@ func TestChecker_Rules(t *testing.T) {
 				t.Errorf("Ignored(%q) = %v, want %v", tt.rel, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestChecker_TrackedFilesAreNotIgnored(t *testing.T) {
+	d := setupRepo(t)
+	writeFiles(t, d, map[string]string{
+		".gitignore":     "build/\nsecret.md\n",
+		"build/keep.md":  "",
+		"build/other.md": "",
+		"secret.md":      "",
+	})
+	idx := &index.Index{Version: 2}
+	for _, name := range []string{"build/keep.md", "secret.md"} {
+		idx.Entries = append(idx.Entries, &index.Entry{Name: name, Mode: filemode.Regular})
+	}
+	f, err := os.Create(filepath.Join(d, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := index.NewEncoder(f).Encode(idx); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewChecker(d)
+	tests := []struct {
+		rel  string
+		want bool
+	}{
+		{"secret.md", false},
+		{"build", false},
+		{"build/keep.md", false},
+		{"build/other.md", true},
+	}
+	for _, tt := range tests {
+		if got := c.Ignored(filepath.Join(d, filepath.FromSlash(tt.rel))); got != tt.want {
+			t.Errorf("Ignored(%q) = %v, want %v", tt.rel, got, tt.want)
+		}
 	}
 }
 
