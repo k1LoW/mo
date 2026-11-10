@@ -406,6 +406,36 @@ func TestChecker_SubdirectoryRoot(t *testing.T) {
 	}
 }
 
+func TestChecker_SymlinkedRootOutsideRepository(t *testing.T) {
+	d := setupRepo(t)
+	writeFiles(t, d, map[string]string{"docs/secret.md": "", "docs/a.md": ""})
+	link := filepath.Join(t.TempDir(), "docs")
+	if err := os.Symlink(filepath.Join(d, "docs"), link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	c := NewChecker(link)
+	if c == nil {
+		t.Fatal("NewChecker(symlink into repository) returned nil")
+	}
+	if !c.Ignored(filepath.Join(link, "secret.md")) {
+		t.Error("secret.md should be ignored through the symlinked root")
+	}
+	if c.Ignored(filepath.Join(link, "a.md")) {
+		t.Error("a.md should not be ignored")
+	}
+	var visited []string
+	err := fs.WalkDir(c.DirFS(link), ".", func(path string, _ fs.DirEntry, err error) error {
+		visited = append(visited, path)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(visited, "secret.md") || !slices.Contains(visited, "a.md") {
+		t.Errorf("visited = %v, want a.md without secret.md", visited)
+	}
+}
+
 func TestChecker_NotARepository(t *testing.T) {
 	isolateGitConfig(t)
 	c := NewChecker(t.TempDir())

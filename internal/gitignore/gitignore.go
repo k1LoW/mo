@@ -36,7 +36,12 @@ import (
 // that are not seen.
 type Checker struct {
 	root string // directory the checker was created for
-	repo string // working tree root of the repository containing root
+	// real is root with symlinks resolved. Queried paths are mapped onto it,
+	// because the repository is found from where root actually lives, as git
+	// does, while callers keep using the logical paths that file IDs derive
+	// from.
+	real string
+	repo string // working tree root of the repository containing real
 	base []gitignore.Pattern
 	// tracked holds the slash-separated paths of the files in the index and
 	// of every directory above them. git never reports a tracked path as
@@ -57,21 +62,48 @@ func NewChecker(root string) *Checker {
 	if err != nil {
 		return nil
 	}
-	repo, gitDir, ok := findRepo(root)
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		real = root
+	}
+	repo, gitDir, ok := findRepo(real)
 	if !ok {
 		return nil
 	}
+	gitDirs := []string{gitDir}
+	// includeIf gitdir conditions are written against the path the user
+	// knows, which may go through a symlink, so match that form as well.
+	if rel, err := filepath.Rel(repo, real); err == nil {
+		if logicalRepo, ok := strings.CutSuffix(root, string(filepath.Separator)+rel); ok && rel != "." {
+			gitDirs = append(gitDirs, filepath.Join(logicalRepo, filepath.Base(gitDir)))
+		} else if rel == "." && root != real {
+			gitDirs = append(gitDirs, filepath.Join(root, filepath.Base(gitDir)))
+		}
+	}
 	c := &Checker{
 		root:    root,
+		real:    real,
 		repo:    repo,
-		base:    loadBasePatterns(gitDir),
+		base:    loadBasePatterns(gitDir, gitDirs),
 		tracked: loadTracked(gitDir),
 		dirs:    make(map[string][]gitignore.Pattern),
 	}
-	if root != repo && c.match(root, true, repo) {
+	if real != repo && c.match(real, true, repo) {
 		return nil
 	}
 	return c
+}
+
+// resolve maps a path below the logical root onto the resolved one.
+func (c *Checker) resolve(path string) string {
+	if c.root == c.real {
+		return path
+	}
+	rel, err := filepath.Rel(c.root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.Join(c.real, rel)
 }
 
 // Ignored reports whether path, or one of its parent directories below the
@@ -82,7 +114,7 @@ func (c *Checker) Ignored(path string) bool {
 	}
 	path = filepath.Clean(path)
 	info, err := os.Lstat(path)
-	return c.match(path, err == nil && info.IsDir(), c.root)
+	return c.match(c.resolve(path), err == nil && info.IsDir(), c.real)
 }
 
 // DirFS returns an fs.FS rooted at dir that hides entries ignored by c.
@@ -168,7 +200,7 @@ func (f *ignoreFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 	dir := filepath.Join(f.base, filepath.FromSlash(name))
 	return slices.DeleteFunc(entries, func(e fs.DirEntry) bool {
-		return f.checker.match(filepath.Join(dir, e.Name()), e.IsDir(), f.checker.root)
+		return f.checker.match(f.checker.resolve(filepath.Join(dir, e.Name())), e.IsDir(), f.checker.real)
 	}), nil
 }
 
@@ -220,7 +252,7 @@ func readGitDirFile(path string) (string, bool) {
 
 // loadBasePatterns returns the patterns that apply to the whole repository,
 // lowest priority first.
-func loadBasePatterns(gitDir string) []gitignore.Pattern {
+func loadBasePatterns(gitDir string, gitDirs []string) []gitignore.Pattern {
 	// A linked worktree shares info/exclude and config with the main
 	// repository.
 	commonDir := gitDir
@@ -232,7 +264,7 @@ func loadBasePatterns(gitDir string) []gitignore.Pattern {
 		commonDir = cd
 	}
 	var ps []gitignore.Pattern
-	if f := excludesFile(gitDir, commonDir); f != "" {
+	if f := excludesFile(gitDirs, commonDir); f != "" {
 		ps = readPatterns(f, nil, false)
 	}
 	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false)...)
@@ -275,7 +307,7 @@ func loadTracked(gitDir string) map[string]struct{} {
 // through a billy filesystem rooted at "/", which cannot reach a Windows
 // home directory, and it reads neither $XDG_CONFIG_HOME/git/config, the
 // repository config nor includes, nor falls back to the default ignore file.
-func excludesFile(gitDir, commonDir string) string {
+func excludesFile(gitDirs []string, commonDir string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		slog.Debug("skipping global git excludes", "error", err)
@@ -296,7 +328,7 @@ func excludesFile(gitDir, commonDir string) string {
 		filepath.Join(commonDir, "config"),
 	}
 	for _, cfg := range cfgs {
-		if v, ok := coreExcludesFile(cfg, home, gitDir, 0); ok {
+		if v, ok := coreExcludesFile(cfg, home, gitDirs, 0); ok {
 			excludes, set = v, true
 		}
 	}
@@ -316,7 +348,7 @@ const maxIncludeDepth = 10
 // path or by the files it includes, applying settings and includes in the
 // order they appear so that the last one wins, as in git. set reports whether
 // the setting appeared at all, since an empty value is meaningful.
-func coreExcludesFile(path, home, gitDir string, depth int) (v string, set bool) {
+func coreExcludesFile(path, home string, gitDirs []string, depth int) (v string, set bool) {
 	if depth > maxIncludeDepth {
 		return "", false
 	}
@@ -329,7 +361,7 @@ func coreExcludesFile(path, home, gitDir string, depth int) (v string, set bool)
 		if !filepath.IsAbs(inc) {
 			inc = filepath.Join(filepath.Dir(path), inc)
 		}
-		if iv, ok := coreExcludesFile(inc, home, gitDir, depth+1); ok {
+		if iv, ok := coreExcludesFile(inc, home, gitDirs, depth+1); ok {
 			v, set = iv, true
 		}
 	}
@@ -358,7 +390,7 @@ func coreExcludesFile(path, home, gitDir string, depth int) (v string, set bool)
 				}
 			case s.IsName("includeIf"):
 				for _, ss := range s.Subsections {
-					if !gitDirMatches(ss.Name, path, home, gitDir) {
+					if !gitDirMatches(ss.Name, path, home, gitDirs) {
 						continue
 					}
 					for _, o := range ss.Options {
@@ -391,8 +423,8 @@ func splitSections(b []byte) [][]byte {
 }
 
 // gitDirMatches evaluates an includeIf "gitdir:" or "gitdir/i:" condition
-// against gitDir. Other conditions such as onbranch are never met.
-func gitDirMatches(cond, cfgPath, home, gitDir string) bool {
+// against any of gitDirs. Other conditions such as onbranch are never met.
+func gitDirMatches(cond, cfgPath, home string, gitDirs []string) bool {
 	pat, ok := strings.CutPrefix(cond, "gitdir:")
 	fold := false
 	if !ok {
@@ -419,12 +451,19 @@ func gitDirMatches(cond, cfgPath, home, gitDir string) bool {
 	if strings.HasSuffix(pat, "/") {
 		pat += "**"
 	}
-	target := filepath.ToSlash(gitDir)
 	if fold {
-		pat, target = strings.ToLower(pat), strings.ToLower(target)
+		pat = strings.ToLower(pat)
 	}
-	matched, err := doublestar.Match(pat, target)
-	return err == nil && matched
+	for _, gitDir := range gitDirs {
+		target := filepath.ToSlash(gitDir)
+		if fold {
+			target = strings.ToLower(target)
+		}
+		if matched, err := doublestar.Match(pat, target); err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 func expandHome(p, home string) string {
