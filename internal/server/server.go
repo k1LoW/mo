@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -740,6 +741,7 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 		probe.ignore = gitignore.NewChecker(base)
 	}
 
+	var inherited []string
 	gp, prev, createdGroup, added := func() (*GlobPattern, *GlobPattern, bool, bool) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -747,6 +749,7 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 			if p.Pattern == absPattern && p.Group == groupName {
 				if p.NoIgnore != probe.NoIgnore {
 					probe.watchedDirs = p.watchedDirs
+					inherited = slices.Collect(maps.Keys(p.watchedDirs))
 					s.patterns[i] = probe
 					return probe, p, false, true
 				}
@@ -818,7 +821,7 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 	if prev != nil {
 		// Files already open below directories the new setting ignores stay
 		// open, as they do on --unwatch; only their watches are released.
-		s.releaseUnwalkedDirs(gp, walked)
+		s.releaseUnwalkedDirs(gp, inherited, walked)
 		s.markDirty()
 	}
 
@@ -1414,12 +1417,17 @@ func (s *State) watchDirsForPattern(gp *GlobPattern) map[string]struct{} {
 }
 
 // releaseUnwalkedDirs drops the watches gp inherited from the pattern it
-// replaced for directories it no longer covers.
-func (s *State) releaseUnwalkedDirs(gp *GlobPattern, walked map[string]struct{}) {
+// replaced for directories it no longer covers. Only the inherited ones are
+// candidates, because the watch loop may add a directory created after the
+// walk passed it, and that one is covered although it is not in walked.
+func (s *State) releaseUnwalkedDirs(gp *GlobPattern, inherited []string, walked map[string]struct{}) {
 	var stale []string
 	s.mu.Lock()
-	for dir := range gp.watchedDirs {
-		if _, ok := walked[dir]; !ok {
+	for _, dir := range inherited {
+		if _, ok := walked[dir]; ok {
+			continue
+		}
+		if _, ok := gp.watchedDirs[dir]; ok {
 			delete(gp.watchedDirs, dir)
 			stale = append(stale, dir)
 		}
