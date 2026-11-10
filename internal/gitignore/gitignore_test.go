@@ -241,6 +241,20 @@ func withExtension(sig string) func([]byte) []byte {
 	}
 }
 
+func TestChecker_SplitIndexInDirectoryWithGlobMetacharacters(t *testing.T) {
+	isolateGitConfig(t)
+	d := filepath.Join(t.TempDir(), "repo[1]")
+	writeFiles(t, d, map[string]string{
+		".git/sharedindex.0123": "",
+		".gitignore":            "secret.md\n",
+		"secret.md":             "",
+	})
+	writeIndex(t, d, []string{"secret.md"}, withExtension("link"))
+	if c := NewChecker(d); c != nil {
+		t.Error("a split index must disable filtering whatever the repository path looks like")
+	}
+}
+
 func TestChecker_IndexDecodeFailures(t *testing.T) {
 	tests := []struct {
 		name   string

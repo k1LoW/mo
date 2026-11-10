@@ -337,9 +337,16 @@ func entriesComplete(err error, f *os.File, gitDir string) bool {
 		}
 		return sum == [20]byte{}
 	case errors.Is(err, index.ErrUnknownExtension):
+		// Listing the directory rather than globbing it, so that
+		// metacharacters in its path such as repo[1] are taken literally.
 		for _, dir := range []string{gitDir, commonGitDir(gitDir)} {
-			m, err := filepath.Glob(filepath.Join(dir, "sharedindex.*"))
-			if err != nil || len(m) > 0 {
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				return false
+			}
+			if slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
+				return strings.HasPrefix(e.Name(), "sharedindex.")
+			}) {
 				return false
 			}
 		}
