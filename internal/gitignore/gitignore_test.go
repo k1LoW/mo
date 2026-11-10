@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
@@ -413,6 +414,26 @@ func TestChecker_IncludeIfRelativeDirPrefix(t *testing.T) {
 				t.Errorf("%s should cover a repository below it", cond)
 			}
 		})
+	}
+}
+
+func TestChecker_SelfIncludingConfigFinishes(t *testing.T) {
+	isolateGitConfig(t)
+	d := t.TempDir()
+	cfg := "[core]\n\texcludesFile = " + filepath.ToSlash(filepath.Join(d, "rules")) + "\n"
+	for range 10 {
+		cfg += "[include]\n\tpath = config\n"
+	}
+	writeFiles(t, d, map[string]string{".git/config": cfg, "rules": "*.tmp.md\n", "x.tmp.md": ""})
+	done := make(chan bool, 1)
+	go func() { done <- NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) }()
+	select {
+	case ignored := <-done:
+		if !ignored {
+			t.Error("x.tmp.md should be ignored by core.excludesFile")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("loading a self-including config did not finish")
 	}
 }
 

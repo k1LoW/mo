@@ -384,6 +384,7 @@ func excludesFile(gitDirs []string, commonDir string) string {
 	// overrides an earlier one and disables the default file too.
 	var excludes string
 	set := false
+	st := &includeState{active: make(map[string]bool)}
 	cfgs := []string{
 		"/etc/gitconfig",
 		filepath.Join(xdg, "git", "config"),
@@ -391,7 +392,7 @@ func excludesFile(gitDirs []string, commonDir string) string {
 		filepath.Join(commonDir, "config"),
 	}
 	for _, cfg := range cfgs {
-		if v, ok := coreExcludesFile(cfg, home, gitDirs, 0); ok {
+		if v, ok := coreExcludesFile(cfg, home, gitDirs, 0, st); ok {
 			excludes, set = v, true
 		}
 	}
@@ -407,14 +408,30 @@ func excludesFile(gitDirs []string, commonDir string) string {
 // maxIncludeDepth is git's limit on nested config includes.
 const maxIncludeDepth = 10
 
+// maxIncludeReads bounds the config files read for one lookup. The depth
+// limit alone does not, because every level may include several files, so
+// a few includes pointing back at their own file multiply at each level.
+const maxIncludeReads = 64
+
+// includeState tracks one core.excludesFile lookup across includes.
+type includeState struct {
+	active map[string]bool // files currently being read, to detect cycles
+	reads  int
+}
+
 // coreExcludesFile returns core.excludesFile as set by the config file at
 // path or by the files it includes, applying settings and includes in the
 // order they appear so that the last one wins, as in git. set reports whether
 // the setting appeared at all, since an empty value is meaningful.
-func coreExcludesFile(path, home string, gitDirs []string, depth int) (v string, set bool) {
-	if depth > maxIncludeDepth {
+func coreExcludesFile(path, home string, gitDirs []string, depth int, st *includeState) (v string, set bool) {
+	path = filepath.Clean(path)
+	// git rejects an include cycle, so a file already being read adds nothing.
+	if depth > maxIncludeDepth || st.reads >= maxIncludeReads || st.active[path] {
 		return "", false
 	}
+	st.reads++
+	st.active[path] = true
+	defer delete(st.active, path)
 	b, err := readRegularFile(path, false)
 	if err != nil {
 		return "", false
@@ -424,7 +441,7 @@ func coreExcludesFile(path, home string, gitDirs []string, depth int) (v string,
 		if !filepath.IsAbs(inc) {
 			inc = filepath.Join(filepath.Dir(path), inc)
 		}
-		if iv, ok := coreExcludesFile(inc, home, gitDirs, depth+1); ok {
+		if iv, ok := coreExcludesFile(inc, home, gitDirs, depth+1, st); ok {
 			v, set = iv, true
 		}
 	}
