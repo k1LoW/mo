@@ -1,85 +1,189 @@
-// Package gitignore answers "is this path ignored by git?" by delegating to
-// the git command, so .gitignore, .git/info/exclude and the global ignore file
-// are all honored.
+// Package gitignore answers "is this path ignored by git?" by evaluating
+// .gitignore, .git/info/exclude, core.excludesFile and the index the way git
+// does, with a port of git's wildmatch for the rules and go-git for decoding
+// the index and config.
+//
+// It reads those files directly rather than running the git command, so mo
+// does not depend on git being installed, and browsing a directory never
+// executes anything configured by that directory's repository (for example
+// core.fsmonitor).
 package gitignore
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
-	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+
+	"github.com/go-git/go-git/v5/plumbing/format/config"
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 )
 
-// Checker reports which paths below a root directory are ignored by git. It
-// is built from a single `git ls-files` call, so it is cheap to query for
-// every entry of a large tree. A nil *Checker ignores nothing.
+// Checker reports which paths below a root directory are ignored by git. A
+// nil *Checker ignores nothing.
+//
+// The .gitignore of each directory is read the first time a path below it is
+// queried and cached for the lifetime of the Checker, so edits made after
+// that are not seen.
 type Checker struct {
-	root    string
-	ignored map[string]struct{}
+	root string // directory the checker was created for
+	// real is root with symlinks resolved. Queried paths are mapped onto it,
+	// because the repository is found from where root actually lives, as git
+	// does, while callers keep using the logical paths that file IDs derive
+	// from.
+	real string
+	repo string // working tree root of the repository containing real
+	fold bool   // core.ignoreCase
+	base []gitignore.Pattern
+	// tracked holds the slash-separated paths of the files in the index and
+	// of every directory above them. git never reports a tracked path as
+	// ignored, and does not skip a directory that still holds tracked files.
+	tracked map[string]struct{}
+
+	mu   sync.Mutex
+	dirs map[string][]gitignore.Pattern
 }
 
-// NewChecker lists the untracked, ignored entries below root. Ignored
-// directories are reported as a whole, so a directory such as node_modules
-// costs one entry regardless of its size.
+// NewChecker returns a Checker for the paths below root.
 //
-// It returns nil (nothing is ignored) when git is unavailable, root is not in
-// a git repository, or root itself is ignored: pointing mo at an ignored
-// directory explicitly means the user wants its contents.
+// It returns nil (nothing is ignored) when root is not in a git repository,
+// or root itself is ignored. Pointing mo at an ignored directory explicitly
+// means the user wants its contents.
 func NewChecker(root string) *Checker {
-	root = filepath.Clean(root)
-	if IsIgnored(root) {
-		return nil
-	}
-	cmd := exec.Command("git", "-C", root, "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z") //nolint:gosec
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	root, err := filepath.Abs(root)
 	if err != nil {
-		slog.Debug("skipping gitignore filtering", "dir", root, "error", strings.TrimSpace(stderr.String()))
 		return nil
 	}
-	ignored := make(map[string]struct{})
-	for rel := range strings.SplitSeq(string(out), "\x00") {
-		rel = strings.TrimSuffix(rel, "/")
-		if rel == "" {
-			continue
-		}
-		ignored[filepath.Join(root, filepath.FromSlash(rel))] = struct{}{}
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		real = root
 	}
-	return &Checker{root: root, ignored: ignored}
+	repo, gitDir, ok := findRepo(real)
+	if !ok {
+		return nil
+	}
+	gitDirs := []string{gitDir}
+	// includeIf gitdir conditions are written against the path the user
+	// knows, which may go through a symlink, so match that form as well.
+	if rel, err := filepath.Rel(repo, real); err == nil {
+		if logicalRepo, ok := strings.CutSuffix(root, string(filepath.Separator)+rel); ok && rel != "." {
+			gitDirs = append(gitDirs, filepath.Join(logicalRepo, filepath.Base(gitDir)))
+		} else if rel == "." && root != real {
+			gitDirs = append(gitDirs, filepath.Join(root, filepath.Base(gitDir)))
+		}
+	}
+	tracked, ok := loadTracked(gitDir)
+	if !ok {
+		return nil
+	}
+	commonDir := commonGitDir(gitDir)
+	fold := ignoreCase(commonDir)
+	c := &Checker{
+		root:    root,
+		real:    real,
+		repo:    repo,
+		fold:    fold,
+		base:    loadBasePatterns(commonDir, gitDirs, real, fold),
+		tracked: tracked,
+		dirs:    make(map[string][]gitignore.Pattern),
+	}
+	if real != repo && c.match(real, true, repo) {
+		return nil
+	}
+	return c
 }
 
 // Ignored reports whether path, or one of its parent directories below the
 // root, is ignored.
 func (c *Checker) Ignored(path string) bool {
-	if c == nil || len(c.ignored) == 0 {
+	if c == nil {
 		return false
 	}
-	for p := filepath.Clean(path); p != c.root; {
-		if _, ok := c.ignored[p]; ok {
-			return true
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			break
-		}
-		p = parent
-	}
-	return false
+	path = filepath.Clean(path)
+	info, err := os.Lstat(path)
+	return c.match(c.resolve(path), err == nil && info.IsDir(), c.real)
 }
 
 // DirFS returns an fs.FS rooted at dir that hides entries ignored by c.
 // When c is nil, it returns os.DirFS(dir) directly.
 func (c *Checker) DirFS(dir string) fs.FS {
 	fsys := os.DirFS(dir)
-	if c == nil || len(c.ignored) == 0 {
+	if c == nil {
 		return fsys
 	}
 	return &ignoreFS{FS: fsys, base: dir, checker: c}
+}
+
+// resolve maps a path below the logical root onto the resolved one.
+func (c *Checker) resolve(path string) string {
+	if c.root == c.real {
+		return path
+	}
+	rel, err := filepath.Rel(c.root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.Join(c.real, rel)
+}
+
+// match reports whether path, or one of its parent directories strictly
+// below from, is ignored. Parents are checked before path itself because git
+// never looks inside an ignored directory, so a negation pattern cannot bring
+// back a file below one.
+func (c *Checker) match(path string, isDir bool, from string) bool {
+	rel, err := filepath.Rel(c.repo, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	segs := strings.Split(rel, string(filepath.Separator))
+	// Only the queried path itself is exempt. An untracked file below an
+	// ignored directory stays ignored even when that directory also holds
+	// tracked files.
+	if _, ok := c.tracked[strings.Join(segs, "/")]; ok {
+		return false
+	}
+	patterns := slices.Clone(c.base)
+	dir := c.repo
+	for i := range segs {
+		patterns = append(patterns, c.dirPatterns(dir, segs[:i])...)
+		dir = filepath.Join(dir, segs[i])
+		last := i == len(segs)-1
+		if !pathWithin(dir, from) {
+			continue
+		}
+		if gitignore.NewMatcher(patterns).Match(segs[:i+1], isDir || !last) {
+			return true
+		}
+	}
+	return false
+}
+
+// dirPatterns returns the patterns of the .gitignore in dir, whose path
+// relative to the repository root is domain.
+func (c *Checker) dirPatterns(dir string, domain []string) []gitignore.Pattern {
+	c.mu.Lock()
+	ps, ok := c.dirs[dir]
+	c.mu.Unlock()
+	if ok {
+		return ps
+	}
+	// Like git, refuse a .gitignore that is a symlink, so a browsed tree
+	// cannot point it at something like /dev/zero.
+	ps = readPatterns(filepath.Join(dir, ".gitignore"), domain, true, c.fold)
+	c.mu.Lock()
+	c.dirs[dir] = ps
+	c.mu.Unlock()
+	return ps
 }
 
 type ignoreFS struct {
@@ -103,9 +207,9 @@ func (f *ignoreFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	relDir := filepath.FromSlash(name)
+	dir := filepath.Join(f.base, filepath.FromSlash(name))
 	return slices.DeleteFunc(entries, func(e fs.DirEntry) bool {
-		return f.checker.Ignored(filepath.Join(f.base, relDir, e.Name()))
+		return f.checker.match(f.checker.resolve(filepath.Join(dir, e.Name())), e.IsDir(), f.checker.real)
 	}), nil
 }
 
@@ -116,17 +220,489 @@ func (f *ignoreFS) Stat(name string) (fs.FileInfo, error) {
 	return fs.Stat(f.FS, name)
 }
 
-// IsIgnored reports whether a single path is ignored by git, including when
-// one of its parent directories is ignored. It returns false when git is
-// unavailable or path is not in a git repository.
-func IsIgnored(path string) bool {
-	path = filepath.Clean(path)
-	dir := filepath.Dir(path)
-	target := filepath.Base(path)
-	if info, err := os.Lstat(path); err == nil && info.IsDir() {
-		dir = path
-		target = "."
+// findRepo walks up from dir to the nearest working tree root, and returns it
+// with the repository's git directory.
+func findRepo(dir string) (repo, gitDir string, ok bool) {
+	for {
+		dotGit := filepath.Join(dir, ".git")
+		if info, err := os.Stat(dotGit); err == nil {
+			if info.IsDir() {
+				return dir, dotGit, true
+			}
+			// Linked worktrees and submodules have a .git file that points
+			// at the real git directory.
+			if gd, ok := readGitDirFile(dotGit); ok {
+				return dir, gd, true
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", "", false
+		}
+		dir = parent
 	}
-	err := exec.Command("git", "-C", dir, "check-ignore", "-q", "--", target).Run() //nolint:gosec
-	return err == nil
+}
+
+func readGitDirFile(path string) (string, bool) {
+	b, err := readRegularFile(path, false)
+	if err != nil {
+		return "", false
+	}
+	gd, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:")
+	if !ok {
+		return "", false
+	}
+	gd = filepath.FromSlash(strings.TrimSpace(gd))
+	if !filepath.IsAbs(gd) {
+		gd = filepath.Join(filepath.Dir(path), gd)
+	}
+	return gd, true
+}
+
+// loadBasePatterns returns the patterns that apply to the whole repository,
+// lowest priority first.
+func loadBasePatterns(commonDir string, gitDirs []string, root string, fold bool) []gitignore.Pattern {
+	var ps []gitignore.Pattern
+	if f := excludesFile(gitDirs, commonDir, root); f != "" {
+		ps = readPatterns(f, nil, false, fold)
+	}
+	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false, fold)...)
+}
+
+// ignoreCase reads core.ignoreCase from the repository config, which git
+// init sets on case-insensitive file systems.
+func ignoreCase(commonDir string) bool {
+	b, err := readRegularFile(filepath.Join(commonDir, "config"), false)
+	if err != nil {
+		return false
+	}
+	cfg := config.New()
+	if err := config.NewDecoder(bytes.NewReader(b)).Decode(cfg); err != nil {
+		return false
+	}
+	switch strings.ToLower(cfg.Section("core").Options.Get("ignorecase")) {
+	case "true", "yes", "on", "1":
+		return true
+	}
+	return false
+}
+
+// commonGitDir returns the git directory a linked worktree shares with the
+// main repository, which holds info/exclude and config.
+func commonGitDir(gitDir string) string {
+	b, err := readRegularFile(filepath.Join(gitDir, "commondir"), false)
+	if err != nil {
+		return gitDir
+	}
+	cd := filepath.FromSlash(strings.TrimSpace(string(b)))
+	if !filepath.IsAbs(cd) {
+		cd = filepath.Join(gitDir, cd)
+	}
+	return cd
+}
+
+// loadTracked reads the index of the repository whose git directory is
+// gitDir. A linked worktree has its own index there. A missing index means
+// nothing is tracked yet. ok is false when the index exists but its entries
+// cannot be known, and then nothing should be filtered, since treating
+// tracked files as untracked would hide them.
+func loadTracked(gitDir string) (tracked map[string]struct{}, ok bool) {
+	name := filepath.Join(gitDir, "index")
+	info, err := os.Stat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, true
+	}
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, false
+	}
+	f, err := os.Open(name) //nolint:gosec
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	var idx index.Index
+	if err := index.NewDecoder(bufio.NewReader(f)).Decode(&idx); err != nil && !entriesComplete(err, f, gitDir) {
+		slog.Debug("skipping gitignore filtering for an unreadable git index", "dir", gitDir, "error", err)
+		return nil, false
+	}
+	tracked = make(map[string]struct{}, len(idx.Entries))
+	for _, e := range idx.Entries {
+		for p := e.Name; p != "."; p = path.Dir(p) {
+			if _, ok := tracked[p]; ok {
+				break
+			}
+			tracked[p] = struct{}{}
+		}
+	}
+	return tracked, true
+}
+
+// entriesComplete reports whether a failed index decode still read every
+// entry. go-git decodes all entries before the extensions and the trailing
+// checksum, and fails on what it cannot handle there. Two such failures are
+// common and harmless, so the entries read so far are kept for them rather
+// than turning filtering off in the large repositories that need it most.
+//   - index.skipHash (set by feature.manyFiles) writes an all-zero checksum.
+//   - A sparse index carries a mandatory "sdir" extension go-git does not know.
+//
+// A split index carries the mandatory "link" extension too, but its entries
+// live partly in sharedindex.<hash>, so it is told apart by that file.
+// Reading the shared index is not attempted, because it needs a parser for
+// the link extension and its bitmaps that go-git v5 does not provide.
+func entriesComplete(err error, f *os.File, gitDir string) bool {
+	switch {
+	case errors.Is(err, index.ErrInvalidChecksum):
+		var sum [20]byte
+		if _, err := f.ReadAt(sum[:], fileSize(f)-int64(len(sum))); err != nil {
+			return false
+		}
+		return sum == [20]byte{}
+	case errors.Is(err, index.ErrUnknownExtension):
+		// Listing the directory rather than globbing it, so that
+		// metacharacters in its path such as repo[1] are taken literally.
+		for _, dir := range []string{gitDir, commonGitDir(gitDir)} {
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				return false
+			}
+			if slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
+				return strings.HasPrefix(e.Name(), "sharedindex.")
+			}) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func fileSize(f *os.File) int64 {
+	info, err := f.Stat()
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+// excludesFile returns the ignore file git reads for core.excludesFile, or
+// its default when unset.
+//
+// go-git's LoadGlobalPatterns is not used because it opens ~/.gitconfig
+// through a billy filesystem rooted at "/", which cannot reach a Windows
+// home directory, and it reads neither $XDG_CONFIG_HOME/git/config, the
+// repository config nor includes, nor falls back to the default ignore file.
+//
+// A relative value is taken from root, because the git-based checker this
+// replaced ran git from there rather than from mo's working directory.
+func excludesFile(gitDirs []string, commonDir, root string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		slog.Debug("skipping global git excludes", "error", err)
+		return ""
+	}
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	if xdg == "" {
+		xdg = filepath.Join(home, ".config")
+	}
+	// Later files take precedence, as in git. An explicitly empty value
+	// overrides an earlier one and disables the default file too.
+	var excludes string
+	set := false
+	st := &includeState{active: make(map[string]bool)}
+	cfgs := []string{
+		"/etc/gitconfig",
+		filepath.Join(xdg, "git", "config"),
+		filepath.Join(home, ".gitconfig"),
+		filepath.Join(commonDir, "config"),
+	}
+	for _, cfg := range cfgs {
+		if v, ok := coreExcludesFile(cfg, home, gitDirs, 0, st); ok {
+			excludes, set = v, true
+		}
+	}
+	if !set {
+		return filepath.Join(xdg, "git", "ignore")
+	}
+	if excludes == "" {
+		return ""
+	}
+	p := expandHome(excludes, home)
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(root, p)
+	}
+	return p
+}
+
+// maxIncludeDepth is git's limit on nested config includes.
+const maxIncludeDepth = 10
+
+// maxIncludeReads bounds the config files read for one lookup. The depth
+// limit alone does not, because every level may include several files, so
+// a few includes pointing back at their own file multiply at each level.
+const maxIncludeReads = 64
+
+// includeState tracks one core.excludesFile lookup across includes.
+type includeState struct {
+	active map[string]bool // files currently being read, to detect cycles
+	reads  int
+}
+
+// coreExcludesFile returns core.excludesFile as set by the config file at
+// path or by the files it includes, applying settings and includes in the
+// order they appear so that the last one wins, as in git. set reports whether
+// the setting appeared at all, since an empty value is meaningful.
+func coreExcludesFile(path, home string, gitDirs []string, depth int, st *includeState) (v string, set bool) {
+	path = filepath.Clean(path)
+	// git rejects an include cycle, so a file already being read adds nothing.
+	if depth > maxIncludeDepth || st.reads >= maxIncludeReads || st.active[path] {
+		return "", false
+	}
+	st.reads++
+	st.active[path] = true
+	defer delete(st.active, path)
+	b, err := readRegularFile(path, false)
+	if err != nil {
+		return "", false
+	}
+	include := func(inc string) {
+		inc = expandHome(inc, home)
+		if !filepath.IsAbs(inc) {
+			inc = filepath.Join(filepath.Dir(path), inc)
+		}
+		if iv, ok := coreExcludesFile(inc, home, gitDirs, depth+1, st); ok {
+			v, set = iv, true
+		}
+	}
+	// go-git's decoder merges repeated sections, which loses where an
+	// [include] sits relative to [core]. Decoding one section at a time keeps
+	// that order.
+	for _, chunk := range splitSections(b) {
+		cfg := config.New()
+		if err := config.NewDecoder(bytes.NewReader(chunk)).Decode(cfg); err != nil {
+			slog.Debug("skipping unreadable git config section", "path", path, "error", err)
+			continue
+		}
+		for _, s := range cfg.Sections {
+			switch {
+			case s.IsName("core"):
+				for _, o := range s.Options {
+					if o.IsKey("excludesfile") {
+						v, set = o.Value, true
+					}
+				}
+			case s.IsName("include"):
+				for _, o := range s.Options {
+					if o.IsKey("path") {
+						include(o.Value)
+					}
+				}
+			case s.IsName("includeIf"):
+				for _, ss := range s.Subsections {
+					if !gitDirMatches(ss.Name, path, home, gitDirs) {
+						continue
+					}
+					for _, o := range ss.Options {
+						if o.IsKey("path") {
+							include(o.Value)
+						}
+					}
+				}
+			}
+		}
+	}
+	return v, set
+}
+
+// splitSections splits a git config file at each section header.
+func splitSections(b []byte) [][]byte {
+	var chunks [][]byte
+	var cur []byte
+	for line := range bytes.Lines(b) {
+		if bytes.HasPrefix(bytes.TrimSpace(line), []byte("[")) && len(cur) > 0 {
+			chunks = append(chunks, cur)
+			cur = nil
+		}
+		cur = append(cur, line...)
+	}
+	if len(cur) > 0 {
+		chunks = append(chunks, cur)
+	}
+	return chunks
+}
+
+// gitDirMatches evaluates an includeIf "gitdir:" or "gitdir/i:" condition
+// against any of gitDirs. Other conditions such as onbranch are never met.
+func gitDirMatches(cond, cfgPath, home string, gitDirs []string) bool {
+	pat, ok := strings.CutPrefix(cond, "gitdir:")
+	fold := false
+	if !ok {
+		if pat, ok = strings.CutPrefix(cond, "gitdir/i:"); !ok {
+			return false
+		}
+		fold = true
+	}
+	// Expanding ~/ and ./ goes through filepath.Join, which drops the
+	// trailing slash that makes the condition cover every repository below.
+	dirPrefix := strings.HasSuffix(pat, "/")
+	switch {
+	case strings.HasPrefix(pat, "~/"):
+		pat = expandHome(pat, home)
+	case strings.HasPrefix(pat, "./"):
+		pat = filepath.Join(filepath.Dir(cfgPath), pat[2:])
+	case !filepath.IsAbs(filepath.FromSlash(pat)):
+		pat = "**/" + pat
+	}
+	pat = filepath.ToSlash(pat)
+	if dirPrefix && !strings.HasSuffix(pat, "/") {
+		pat += "/"
+	}
+	if strings.HasSuffix(pat, "/") {
+		pat += "**"
+	}
+	flags := wmPathname
+	if fold {
+		flags |= wmCaseFold
+	}
+	for _, gitDir := range gitDirs {
+		if wildmatch(pat, filepath.ToSlash(gitDir), flags) {
+			return true
+		}
+	}
+	return false
+}
+
+func expandHome(p, home string) string {
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		return filepath.Join(home, filepath.FromSlash(rest))
+	}
+	return filepath.FromSlash(p)
+}
+
+// readPatterns parses an ignore file. go-git's ReadPatterns is not used
+// because it walks the whole tree up front, which is what a lazily loading
+// Checker avoids. fold makes the rules case-insensitive, as core.ignoreCase
+// does.
+func readPatterns(path string, domain []string, nofollow, fold bool) []gitignore.Pattern {
+	b, err := readRegularFile(path, nofollow)
+	if err != nil {
+		return nil
+	}
+	var ps []gitignore.Pattern
+	for line := range strings.Lines(string(b)) {
+		line = strings.TrimRight(line, "\r\n")
+		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
+			continue
+		}
+		ps = append(ps, parsePattern(line, domain, fold))
+	}
+	return ps
+}
+
+// wildPattern is one ignore rule, matched the way git's dir.c does it. A
+// rule is applied to the queried path only, never to its parents, because
+// the Checker walks the parents itself. go-git's own patterns also match
+// any parent by name, so `*` followed by `!docs/` brought back
+// docs/private.md, which git keeps ignored.
+type wildPattern struct {
+	domain   []string
+	pattern  string
+	negative bool
+	dirOnly  bool
+	// basename rules have no slash and match the last path segment at any
+	// depth. The others match the path relative to domain.
+	basename bool
+	fold     bool
+}
+
+// parsePattern parses one ignore rule as git's parse_path_pattern does.
+func parsePattern(line string, domain []string, fold bool) gitignore.Pattern {
+	p := trimTrailingSpaces(line)
+	negative := strings.HasPrefix(p, "!")
+	if negative {
+		p = p[1:]
+	}
+	dirOnly := strings.HasSuffix(p, "/")
+	p = strings.TrimSuffix(p, "/")
+	basename := !strings.Contains(p, "/")
+	return &wildPattern{
+		domain:   slices.Clone(domain),
+		pattern:  strings.TrimPrefix(p, "/"),
+		negative: negative,
+		dirOnly:  dirOnly,
+		basename: basename,
+		fold:     fold,
+	}
+}
+
+// trimTrailingSpaces drops trailing spaces unless the last one is escaped
+// with a backslash.
+func trimTrailingSpaces(s string) string {
+	t := strings.TrimRight(s, " ")
+	if len(t) == len(s) {
+		return s
+	}
+	backslashes := len(t) - len(strings.TrimRight(t, "\\"))
+	if backslashes%2 == 1 {
+		return t + " "
+	}
+	return t
+}
+
+func (p *wildPattern) Match(path []string, isDir bool) gitignore.MatchResult {
+	if len(path) <= len(p.domain) || !slices.Equal(path[:len(p.domain)], p.domain) {
+		return gitignore.NoMatch
+	}
+	if p.dirOnly && !isDir {
+		return gitignore.NoMatch
+	}
+	var flags int
+	if p.fold {
+		flags |= wmCaseFold
+	}
+	var matched bool
+	if p.basename {
+		matched = wildmatch(p.pattern, path[len(path)-1], flags)
+	} else {
+		matched = wildmatch(p.pattern, strings.Join(path[len(p.domain):], "/"), flags|wmPathname)
+	}
+	switch {
+	case !matched:
+		return gitignore.NoMatch
+	case p.negative:
+		return gitignore.Include
+	default:
+		return gitignore.Exclude
+	}
+}
+
+// maxFileSize bounds what is read from a single ignore or config file.
+const maxFileSize = 1 << 20
+
+// readRegularFile reads path only when it is a regular file, so that a device
+// or a FIFO can neither exhaust memory nor block forever, and reads at most
+// maxFileSize bytes of it. With nofollow, a symlink is refused rather than
+// followed.
+func readRegularFile(path string, nofollow bool) ([]byte, error) {
+	stat := os.Stat
+	if nofollow {
+		stat = os.Lstat
+	}
+	info, err := stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.Open(path) //nolint:gosec
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxFileSize))
+}
+
+func pathWithin(path, base string) bool {
+	rel, err := filepath.Rel(base, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

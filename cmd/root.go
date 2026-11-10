@@ -210,7 +210,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&closeFiles, "close", false, "Close files instead of opening them")
 	rootCmd.Flags().BoolVar(&clearBackup, "clear", false, "Clear saved session for the specified port")
 	rootCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output structured data as JSON to stdout")
-	rootCmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "Do not exclude git-ignored files when expanding directory and glob arguments (including --watch)")
+	rootCmd.Flags().BoolVar(&noIgnore, "no-ignore", false, "Do not exclude git-ignored files when expanding directory and glob arguments (including --watch). For a watched pattern, the last setting wins")
 	rootCmd.Flags().BoolVar(&dangerouslyAllowRemoteAccess, "dangerously-allow-remote-access", false, "Allow remote access without authentication. Recommended only for trusted networks.")
 }
 
@@ -369,9 +369,7 @@ func run(cmd *cobra.Command, args []string) (retErr error) {
 	if err != nil {
 		return err
 	}
-	if noIgnore {
-		markNoIgnore(target, patterns...)
-	}
+	setNoIgnore(target, noIgnore, patterns...)
 
 	if watchMode && len(patterns) == 0 {
 		if len(files) > 0 {
@@ -388,6 +386,9 @@ func run(cmd *cobra.Command, args []string) (retErr error) {
 		}
 		if watchMode {
 			return fmt.Errorf("cannot use --watch (-w) with redirected stdin")
+		}
+		if noIgnore {
+			return fmt.Errorf("cannot use --no-ignore with redirected stdin")
 		}
 		name, content, err := readStdin(os.Stdin)
 		if err != nil {
@@ -466,9 +467,7 @@ func run(cmd *cobra.Command, args []string) (retErr error) {
 		slog.Warn("failed to load backup", "error", err)
 	}
 	restoredFiles, restoredPatterns, restoredUploads := filterValidRestoreData(&rd)
-	for group, pats := range rd.NoIgnorePatterns {
-		markNoIgnore(group, pats...)
-	}
+	restoreNoIgnore(rd.NoIgnorePatterns, target, patterns)
 	var uploadedFiles []server.UploadedFileData
 	if len(restoredFiles) > 0 || len(restoredPatterns) > 0 || len(restoredUploads) > 0 {
 		slog.Info("restoring session from backup", "port", port)
@@ -588,11 +587,35 @@ func loadRestoreData(path string) (map[string][]string, map[string][]string, []s
 var noIgnorePatterns = map[string]map[string]struct{}{}
 
 func markNoIgnore(group string, patterns ...string) {
+	setNoIgnore(group, true, patterns...)
+}
+
+// setNoIgnore records whether each pattern opts out of git-ignore filtering,
+// replacing any earlier setting for it.
+func setNoIgnore(group string, on bool, patterns ...string) {
 	for _, p := range patterns {
+		if !on {
+			delete(noIgnorePatterns[group], p)
+			continue
+		}
 		if noIgnorePatterns[group] == nil {
 			noIgnorePatterns[group] = make(map[string]struct{})
 		}
 		noIgnorePatterns[group][p] = struct{}{}
+	}
+}
+
+// restoreNoIgnore marks the patterns the backup recorded as opted out, except
+// the ones given on this command line, whose setting comes from this
+// invocation's --no-ignore.
+func restoreNoIgnore(saved map[string][]string, group string, cliPatterns []string) {
+	for g, pats := range saved {
+		for _, p := range pats {
+			if g == group && slices.Contains(cliPatterns, p) {
+				continue
+			}
+			markNoIgnore(g, p)
+		}
 	}
 }
 
@@ -841,11 +864,9 @@ func postPatterns(client *http.Client, addr, group string, patterns []string) ([
 	added := 0
 	for _, pat := range patterns {
 		payload := map[string]any{
-			"pattern": pat,
-			"group":   group,
-		}
-		if isNoIgnore(group, pat) {
-			payload["noIgnore"] = true
+			"pattern":  pat,
+			"group":    group,
+			"noIgnore": isNoIgnore(group, pat),
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {

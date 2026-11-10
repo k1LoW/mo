@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -210,8 +211,11 @@ type GlobPattern struct {
 	BaseDir      string // Base directory extracted via SplitPattern
 	Group        string // Target group for matched files
 	NoIgnore     bool   // Include files ignored by git (default: git-ignored files and directories are skipped)
-	baseIgnored  bool   // True when BaseDir itself is ignored or outside a git repository
-	watchedDirs  map[string]struct{}
+	// ignore is built once in AddPattern and shared by the initial expansion
+	// and the watch loop, so both agree on what is ignored. It is nil when
+	// nothing is filtered.
+	ignore      *gitignore.Checker
+	watchedDirs map[string]struct{}
 }
 
 // PatternOption customizes how AddPattern registers a pattern.
@@ -226,20 +230,6 @@ func WithNoIgnore(noIgnore bool) PatternOption {
 // IsRecursive returns true if the pattern contains ** for recursive matching.
 func (gp *GlobPattern) IsRecursive() bool {
 	return strings.Contains(gp.Pattern, "**")
-}
-
-// skipsIgnored reports whether git-ignored paths below BaseDir should be skipped.
-func (gp *GlobPattern) skipsIgnored() bool {
-	return !gp.NoIgnore && !gp.baseIgnored
-}
-
-// ignoreChecker returns the checker used to skip git-ignored paths below the
-// pattern's base directory, or nil when the pattern opted out.
-func (gp *GlobPattern) ignoreChecker() *gitignore.Checker {
-	if !gp.skipsIgnored() {
-		return nil
-	}
-	return gitignore.NewChecker(gp.BaseDir)
 }
 
 type State struct {
@@ -711,7 +701,9 @@ func (s *State) ShutdownCh() <-chan struct{} {
 // AddPattern registers a glob pattern for automatic file discovery.
 // It performs an initial expansion to add existing matches and starts
 // watching the base directory for new files. Files and directories ignored by
-// git are skipped unless WithNoIgnore(true) is given.
+// git are skipped unless WithNoIgnore(true) is given. Adding a registered
+// pattern again with a different WithNoIgnore replaces it, so the last
+// setting wins.
 func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) ([]*FileEntry, error) {
 	// Use forward slashes for doublestar
 	dsPattern := filepath.ToSlash(absPattern)
@@ -738,25 +730,26 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 
 	s.mu.RLock()
 	for _, p := range s.patterns {
-		if p.Pattern == absPattern && p.Group == groupName && (p.NoIgnore || !probe.NoIgnore) {
+		if p.Pattern == absPattern && p.Group == groupName && p.NoIgnore == probe.NoIgnore {
 			s.mu.RUnlock()
 			return nil, nil
 		}
 	}
 	s.mu.RUnlock()
 
-	checker := probe.ignoreChecker()
-	if !probe.NoIgnore && checker == nil {
-		probe.baseIgnored = true
+	if !probe.NoIgnore {
+		probe.ignore = gitignore.NewChecker(base)
 	}
 
+	var inherited []string
 	gp, prev, createdGroup, added := func() (*GlobPattern, *GlobPattern, bool, bool) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		for i, p := range s.patterns {
 			if p.Pattern == absPattern && p.Group == groupName {
-				if !p.NoIgnore && probe.NoIgnore {
+				if p.NoIgnore != probe.NoIgnore {
 					probe.watchedDirs = p.watchedDirs
+					inherited = slices.Collect(maps.Keys(p.watchedDirs))
 					s.patterns[i] = probe
 					return probe, p, false, true
 				}
@@ -800,12 +793,12 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 					matches = append(matches, rel)
 				}
 			}
-		}, checker.Ignored)
+		}, gp.ignore.Ignored)
 		if err == nil {
 			err = matchErr
 		}
 	} else {
-		matches, err = doublestar.Glob(checker.DirFS(base), relPat, doublestar.WithFilesOnly())
+		matches, err = doublestar.Glob(gp.ignore.DirFS(base), relPat, doublestar.WithFilesOnly())
 	}
 	if err != nil {
 		s.rollbackPattern(gp, prev, createdGroup)
@@ -824,10 +817,13 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 		entries = append(entries, entry)
 	}
 
+	walked := s.watchDirsForPattern(gp)
 	if prev != nil {
+		// Files already open below directories the new setting ignores stay
+		// open, as they do on --unwatch; only their watches are released.
+		s.releaseIgnoredDirs(gp, inherited, walked)
 		s.markDirty()
 	}
-	s.watchDirsForPattern(gp, checker)
 
 	return entries, nil
 }
@@ -903,8 +899,8 @@ type UploadedFileData struct {
 
 // RestoreData represents the state to be persisted across restarts.
 type RestoreData struct {
-	Groups        map[string][]string `json:"groups"`
-	Patterns      map[string][]string `json:"patterns,omitempty"`
+	Groups   map[string][]string `json:"groups"`
+	Patterns map[string][]string `json:"patterns,omitempty"`
 	// NoIgnorePatterns lists, per group, the patterns registered with
 	// WithNoIgnore. They are a subset of Patterns.
 	NoIgnorePatterns map[string][]string `json:"noIgnorePatterns,omitempty"`
@@ -1045,10 +1041,6 @@ func (s *State) groupHasPatterns(groupName string) bool {
 }
 
 func (s *State) walkDirsForPattern(gp *GlobPattern, fn func(string)) {
-	s.walkDirsForPatternWithChecker(gp, gp.ignoreChecker(), fn)
-}
-
-func (s *State) walkDirsForPatternWithChecker(gp *GlobPattern, checker *gitignore.Checker, fn func(string)) {
 	if s.watcher == nil {
 		return
 	}
@@ -1057,7 +1049,7 @@ func (s *State) walkDirsForPatternWithChecker(gp *GlobPattern, checker *gitignor
 		return
 	}
 
-	unresolved, err := walkSymlinkTreeSkip(gp.BaseDir, fn, nil, checker.Ignored)
+	unresolved, err := walkSymlinkTreeSkip(gp.BaseDir, fn, nil, gp.ignore.Ignored)
 	// Entries that could not be classified never reached fn, so hand over the
 	// ones already tracked as watched directories. Without this, unwatch cannot
 	// decrement the refcount of a directory that stopped resolving after its
@@ -1413,10 +1405,51 @@ func (s *State) sendEvent(e sseEvent) {
 	}
 }
 
-func (s *State) watchDirsForPattern(gp *GlobPattern, checker *gitignore.Checker) {
-	s.walkDirsForPatternWithChecker(gp, checker, func(dir string) {
+// watchDirsForPattern watches every directory the pattern covers and returns
+// the directories it walked.
+func (s *State) watchDirsForPattern(gp *GlobPattern) map[string]struct{} {
+	walked := make(map[string]struct{})
+	s.walkDirsForPattern(gp, func(dir string) {
+		walked[dir] = struct{}{}
 		s.addPatternDirWatch(gp, dir)
 	})
+	return walked
+}
+
+// releaseIgnoredDirs drops the watches gp inherited from the pattern it
+// replaced for directories its checker now ignores. Only the inherited ones
+// are candidates, because the watch loop may add a directory created after
+// the walk passed it. Missing from walked is not enough either, because a
+// walk through a symlink that dangles for a moment cannot reach what is
+// below it although the pattern still covers it.
+func (s *State) releaseIgnoredDirs(gp *GlobPattern, inherited []string, walked map[string]struct{}) {
+	var ignored []string
+	for _, dir := range inherited {
+		if _, ok := walked[dir]; !ok && gp.ignore.Ignored(dir) {
+			ignored = append(ignored, dir)
+		}
+	}
+	if len(ignored) == 0 {
+		return
+	}
+	var stale []string
+	s.mu.Lock()
+	// A later replacement shares this watchedDirs map, and pruning it from
+	// here would release watches the current pattern still needs.
+	if !slices.Contains(s.patterns, gp) {
+		s.mu.Unlock()
+		return
+	}
+	for _, dir := range ignored {
+		if _, ok := gp.watchedDirs[dir]; ok {
+			delete(gp.watchedDirs, dir)
+			stale = append(stale, dir)
+		}
+	}
+	s.mu.Unlock()
+	for _, dir := range stale {
+		s.removeDirWatch(dir)
+	}
 }
 
 // rollbackPattern undoes what AddPattern registers before its initial
@@ -1554,53 +1587,35 @@ func (s *State) handleCreateForGlobs(path string) {
 
 	if info.IsDir() {
 		var covering []*GlobPattern
-		anyIncludeIgnored := false
-		anySkipIgnored := false
 		for _, gp := range patterns {
 			if gp.IsRecursive() && pathWithinBase(path, gp.BaseDir) {
 				covering = append(covering, gp)
-				if gp.skipsIgnored() {
-					anySkipIgnored = true
-				} else {
-					anyIncludeIgnored = true
+			}
+		}
+		// A freshly created directory such as node_modules is not worth
+		// walking when every covering pattern ignores it.
+		skip := func(p string) bool {
+			for _, gp := range covering {
+				if !gp.ignore.Ignored(p) {
+					return false
 				}
 			}
+			return true
 		}
-		if len(covering) == 0 {
+		if len(covering) == 0 || skip(path) {
 			return
-		}
-
-		// A freshly created directory such as node_modules is not worth
-		// walking when every covering pattern skips git-ignored paths.
-		var checker *gitignore.Checker
-		pathIgnored := false
-		if anySkipIgnored {
-			checker = gitignore.NewChecker(path)
-			pathIgnored = checker == nil
-			if pathIgnored && !anyIncludeIgnored {
-				return
-			}
-		}
-		var skip func(string) bool
-		if !anyIncludeIgnored {
-			skip = checker.Ignored
-		}
-		// eligible reports whether gp applies to p, which is below the
-		// created directory.
-		eligible := func(gp *GlobPattern, p string) bool {
-			return !gp.skipsIgnored() || (!pathIgnored && !checker.Ignored(p))
 		}
 
 		if _, err := walkSymlinkTreeSkip(path, func(dir string) {
 			for _, gp := range covering {
-				if eligible(gp, dir) {
+				if !gp.ignore.Ignored(dir) {
 					s.addPatternDirWatch(gp, dir)
 				}
 			}
 		}, func(file string) {
 			var applicable []*GlobPattern
 			for _, gp := range patterns {
-				if eligible(gp, file) {
+				if !gp.ignore.Ignored(file) {
 					applicable = append(applicable, gp)
 				}
 			}
@@ -1611,11 +1626,9 @@ func (s *State) handleCreateForGlobs(path string) {
 		return
 	}
 
-	// Skip the git lookup entirely when every pattern opted out of it.
-	applicable := patterns
-	if slices.ContainsFunc(patterns, (*GlobPattern).skipsIgnored) && gitignore.IsIgnored(path) {
-		applicable = slices.DeleteFunc(slices.Clone(patterns), (*GlobPattern).skipsIgnored)
-	}
+	applicable := slices.DeleteFunc(slices.Clone(patterns), func(gp *GlobPattern) bool {
+		return gp.ignore.Ignored(path)
+	})
 	s.matchAndAddFile(path, applicable)
 }
 
