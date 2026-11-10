@@ -116,6 +116,30 @@ func TestChecker_Rules(t *testing.T) {
 			want:  true,
 		},
 		{
+			name:  "leading ** backtracks over repeated directory names",
+			files: map[string]string{".gitignore": "**/docs/private.md\n", "docs/docs/private.md": ""},
+			rel:   "docs/docs/private.md",
+			want:  true,
+		},
+		{
+			name:  "inner ** backtracks over repeated directory names",
+			files: map[string]string{".gitignore": "a/**/b/c.md\n", "a/b/x/b/c.md": ""},
+			rel:   "a/b/x/b/c.md",
+			want:  true,
+		},
+		{
+			name:  "** pattern is anchored to its .gitignore",
+			files: map[string]string{"sub/.gitignore": "**/private.md\n", "private.md": ""},
+			rel:   "private.md",
+			want:  false,
+		},
+		{
+			name:  "directory-only ** pattern ignores files below the directory",
+			files: map[string]string{".gitignore": "**/cache/\n", "x/cache/a.md": ""},
+			rel:   "x/cache/a.md",
+			want:  true,
+		},
+		{
 			name:  "negation re-includes a file",
 			files: map[string]string{".gitignore": "*.md\n!keep.md\n", "keep.md": ""},
 			rel:   "keep.md",

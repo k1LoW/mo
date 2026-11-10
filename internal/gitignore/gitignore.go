@@ -543,17 +543,68 @@ func readPatterns(path string, domain []string, nofollow bool) []gitignore.Patte
 		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
-		// In git a trailing "/**" matches everything inside a directory but
-		// not the directory itself, so a later negation can still reach a
-		// file below it. go-git's matcher also matches the directory, which
-		// would make the parent check in match skip it, so require at least
-		// one more segment.
-		if trimmed := strings.TrimRight(line, " "); strings.HasSuffix(trimmed, "/**") {
-			line = trimmed + "/*"
-		}
-		ps = append(ps, gitignore.ParsePattern(line, domain))
+		ps = append(ps, parsePattern(line, domain))
 	}
 	return ps
+}
+
+// parsePattern parses one ignore rule. Rules with a "**" segment are matched
+// by recursivePattern, because go-git's matcher does not backtrack after
+// "**", so `**/docs/private.md` misses docs/docs/private.md. The rest go to
+// go-git as is.
+func parsePattern(line string, domain []string) gitignore.Pattern {
+	p := line
+	inclusion := strings.HasPrefix(p, "!")
+	if inclusion {
+		p = p[1:]
+	}
+	if !strings.HasSuffix(p, "\\ ") {
+		p = strings.TrimRight(p, " ")
+	}
+	dirOnly := strings.HasSuffix(p, "/")
+	p = strings.TrimSuffix(p, "/")
+	segs := strings.Split(strings.TrimPrefix(p, "/"), "/")
+	if !slices.Contains(segs, "**") {
+		return gitignore.ParsePattern(line, domain)
+	}
+	// In git a trailing "**" matches everything inside a directory but not
+	// the directory itself, so a later negation can still reach a file
+	// below it.
+	if segs[len(segs)-1] == "**" {
+		segs = append(segs, "*")
+	}
+	return &recursivePattern{
+		domain:    slices.Clone(domain),
+		glob:      strings.Join(segs, "/"),
+		inclusion: inclusion,
+		dirOnly:   dirOnly,
+	}
+}
+
+// recursivePattern is an ignore rule containing a "**" segment, matched with
+// doublestar against the path relative to the directory of its ignore file.
+type recursivePattern struct {
+	domain    []string
+	glob      string
+	inclusion bool
+	dirOnly   bool
+}
+
+func (p *recursivePattern) Match(path []string, isDir bool) gitignore.MatchResult {
+	if len(path) <= len(p.domain) || !slices.Equal(path[:len(p.domain)], p.domain) {
+		return gitignore.NoMatch
+	}
+	if p.dirOnly && !isDir {
+		return gitignore.NoMatch
+	}
+	matched, err := doublestar.Match(p.glob, strings.Join(path[len(p.domain):], "/"))
+	if err != nil || !matched {
+		return gitignore.NoMatch
+	}
+	if p.inclusion {
+		return gitignore.Include
+	}
+	return gitignore.Exclude
 }
 
 // maxFileSize bounds what is read from a single ignore or config file.
