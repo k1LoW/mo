@@ -1,6 +1,7 @@
 package gitignore
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -179,6 +180,93 @@ func TestChecker_TrackedFilesAreNotIgnored(t *testing.T) {
 		if got := c.Ignored(filepath.Join(d, filepath.FromSlash(tt.rel))); got != tt.want {
 			t.Errorf("Ignored(%q) = %v, want %v", tt.rel, got, tt.want)
 		}
+	}
+}
+
+// writeIndex writes an index tracking names into d/.git/index, after letting
+// mutate rewrite its bytes.
+func writeIndex(t *testing.T, d string, names []string, mutate func([]byte) []byte) {
+	t.Helper()
+	idx := &index.Index{Version: 2}
+	for _, name := range names {
+		idx.Entries = append(idx.Entries, &index.Entry{Name: name, Mode: filemode.Regular})
+	}
+	var buf bytes.Buffer
+	if err := index.NewEncoder(&buf).Encode(idx); err != nil {
+		t.Fatal(err)
+	}
+	b := buf.Bytes()
+	if mutate != nil {
+		b = mutate(b)
+	}
+	if err := os.WriteFile(filepath.Join(d, ".git", "index"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// withExtension inserts an extension with the given signature before the
+// trailing checksum.
+func withExtension(sig string) func([]byte) []byte {
+	return func(b []byte) []byte {
+		body := slices.Clone(b[:len(b)-20])
+		body = append(body, sig...)
+		body = append(body, 0, 0, 0, 0)
+		return append(body, b[len(b)-20:]...)
+	}
+}
+
+func TestChecker_IndexDecodeFailures(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func([]byte) []byte
+		shared bool
+		// wantFilter reports whether filtering stays on. When it does, the
+		// tracked secret.md must also be recognized as tracked.
+		wantFilter bool
+	}{
+		{
+			name: "skipHash leaves an all-zero checksum",
+			mutate: func(b []byte) []byte {
+				clear(b[len(b)-20:])
+				return b
+			},
+			wantFilter: true,
+		},
+		{
+			name:       "sparse index extension",
+			mutate:     withExtension("sdir"),
+			wantFilter: true,
+		},
+		{
+			name:       "split index",
+			mutate:     withExtension("link"),
+			shared:     true,
+			wantFilter: false,
+		},
+		{
+			name: "corrupt checksum",
+			mutate: func(b []byte) []byte {
+				b[len(b)-1] ^= 0xff
+				return b
+			},
+			wantFilter: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := setupRepo(t)
+			writeIndex(t, d, []string{"secret.md"}, tt.mutate)
+			if tt.shared {
+				writeFiles(t, d, map[string]string{".git/sharedindex.0123": ""})
+			}
+			c := NewChecker(d)
+			if got := c != nil; got != tt.wantFilter {
+				t.Fatalf("filtering enabled = %v, want %v", got, tt.wantFilter)
+			}
+			if c.Ignored(filepath.Join(d, "secret.md")) {
+				t.Error("tracked secret.md must not be ignored")
+			}
+		})
 	}
 }
 

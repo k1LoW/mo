@@ -11,6 +11,7 @@ package gitignore
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -80,30 +81,22 @@ func NewChecker(root string) *Checker {
 			gitDirs = append(gitDirs, filepath.Join(root, filepath.Base(gitDir)))
 		}
 	}
+	tracked, ok := loadTracked(gitDir)
+	if !ok {
+		return nil
+	}
 	c := &Checker{
 		root:    root,
 		real:    real,
 		repo:    repo,
 		base:    loadBasePatterns(gitDir, gitDirs),
-		tracked: loadTracked(gitDir),
+		tracked: tracked,
 		dirs:    make(map[string][]gitignore.Pattern),
 	}
 	if real != repo && c.match(real, true, repo) {
 		return nil
 	}
 	return c
-}
-
-// resolve maps a path below the logical root onto the resolved one.
-func (c *Checker) resolve(path string) string {
-	if c.root == c.real {
-		return path
-	}
-	rel, err := filepath.Rel(c.root, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return path
-	}
-	return filepath.Join(c.real, rel)
 }
 
 // Ignored reports whether path, or one of its parent directories below the
@@ -125,6 +118,18 @@ func (c *Checker) DirFS(dir string) fs.FS {
 		return fsys
 	}
 	return &ignoreFS{FS: fsys, base: dir, checker: c}
+}
+
+// resolve maps a path below the logical root onto the resolved one.
+func (c *Checker) resolve(path string) string {
+	if c.root == c.real {
+		return path
+	}
+	rel, err := filepath.Rel(c.root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.Join(c.real, rel)
 }
 
 // match reports whether path, or one of its parent directories strictly
@@ -253,16 +258,7 @@ func readGitDirFile(path string) (string, bool) {
 // loadBasePatterns returns the patterns that apply to the whole repository,
 // lowest priority first.
 func loadBasePatterns(gitDir string, gitDirs []string) []gitignore.Pattern {
-	// A linked worktree shares info/exclude and config with the main
-	// repository.
-	commonDir := gitDir
-	if b, err := readRegularFile(filepath.Join(gitDir, "commondir"), false); err == nil {
-		cd := filepath.FromSlash(strings.TrimSpace(string(b)))
-		if !filepath.IsAbs(cd) {
-			cd = filepath.Join(gitDir, cd)
-		}
-		commonDir = cd
-	}
+	commonDir := commonGitDir(gitDir)
 	var ps []gitignore.Pattern
 	if f := excludesFile(gitDirs, commonDir); f != "" {
 		ps = readPatterns(f, nil, false)
@@ -270,25 +266,45 @@ func loadBasePatterns(gitDir string, gitDirs []string) []gitignore.Pattern {
 	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false)...)
 }
 
+// commonGitDir returns the git directory a linked worktree shares with the
+// main repository, which holds info/exclude and config.
+func commonGitDir(gitDir string) string {
+	b, err := readRegularFile(filepath.Join(gitDir, "commondir"), false)
+	if err != nil {
+		return gitDir
+	}
+	cd := filepath.FromSlash(strings.TrimSpace(string(b)))
+	if !filepath.IsAbs(cd) {
+		cd = filepath.Join(gitDir, cd)
+	}
+	return cd
+}
+
 // loadTracked reads the index of the repository whose git directory is
-// gitDir. A linked worktree has its own index there, so commondir is not
-// followed. When the index cannot be read every path counts as untracked.
-func loadTracked(gitDir string) map[string]struct{} {
+// gitDir. A linked worktree has its own index there. A missing index means
+// nothing is tracked yet. ok is false when the index exists but its entries
+// cannot be known, and then nothing should be filtered, since treating
+// tracked files as untracked would hide them.
+func loadTracked(gitDir string) (tracked map[string]struct{}, ok bool) {
 	name := filepath.Join(gitDir, "index")
-	if info, err := os.Stat(name); err != nil || !info.Mode().IsRegular() {
-		return nil
+	info, err := os.Stat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, true
+	}
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, false
 	}
 	f, err := os.Open(name) //nolint:gosec
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	defer f.Close()
 	var idx index.Index
-	if err := index.NewDecoder(bufio.NewReader(f)).Decode(&idx); err != nil {
-		slog.Debug("skipping git index", "dir", gitDir, "error", err)
-		return nil
+	if err := index.NewDecoder(bufio.NewReader(f)).Decode(&idx); err != nil && !entriesComplete(err, f, gitDir) {
+		slog.Debug("skipping gitignore filtering for an unreadable git index", "dir", gitDir, "error", err)
+		return nil, false
 	}
-	tracked := make(map[string]struct{}, len(idx.Entries))
+	tracked = make(map[string]struct{}, len(idx.Entries))
 	for _, e := range idx.Entries {
 		for p := e.Name; p != "."; p = path.Dir(p) {
 			if _, ok := tracked[p]; ok {
@@ -297,7 +313,47 @@ func loadTracked(gitDir string) map[string]struct{} {
 			tracked[p] = struct{}{}
 		}
 	}
-	return tracked
+	return tracked, true
+}
+
+// entriesComplete reports whether a failed index decode still read every
+// entry. go-git decodes all entries before the extensions and the trailing
+// checksum, and fails on what it cannot handle there. Two such failures are
+// common and harmless, so the entries read so far are kept for them rather
+// than turning filtering off in the large repositories that need it most.
+//   - index.skipHash (set by feature.manyFiles) writes an all-zero checksum.
+//   - A sparse index carries a mandatory "sdir" extension go-git does not know.
+//
+// A split index carries the mandatory "link" extension too, but its entries
+// live partly in sharedindex.<hash>, so it is told apart by that file.
+// Reading the shared index is not attempted, because it needs a parser for
+// the link extension and its bitmaps that go-git v5 does not provide.
+func entriesComplete(err error, f *os.File, gitDir string) bool {
+	switch {
+	case errors.Is(err, index.ErrInvalidChecksum):
+		var sum [20]byte
+		if _, err := f.ReadAt(sum[:], fileSize(f)-int64(len(sum))); err != nil {
+			return false
+		}
+		return sum == [20]byte{}
+	case errors.Is(err, index.ErrUnknownExtension):
+		for _, dir := range []string{gitDir, commonGitDir(gitDir)} {
+			m, err := filepath.Glob(filepath.Join(dir, "sharedindex.*"))
+			if err != nil || len(m) > 0 {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func fileSize(f *os.File) int64 {
+	info, err := f.Stat()
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 // excludesFile returns the ignore file git reads for core.excludesFile, or
