@@ -11,6 +11,8 @@ package gitignore
 import (
 	"bufio"
 	"bytes"
+	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -128,12 +130,17 @@ func (c *Checker) match(path string, isDir bool, from string) bool {
 // relative to the repository root is domain.
 func (c *Checker) dirPatterns(dir string, domain []string) []gitignore.Pattern {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if ps, ok := c.dirs[dir]; ok {
+	ps, ok := c.dirs[dir]
+	c.mu.Unlock()
+	if ok {
 		return ps
 	}
-	ps := readPatterns(filepath.Join(dir, ".gitignore"), domain)
+	// Like git, refuse a .gitignore that is a symlink, so a browsed tree
+	// cannot point it at something like /dev/zero.
+	ps = readPatterns(filepath.Join(dir, ".gitignore"), domain, true)
+	c.mu.Lock()
 	c.dirs[dir] = ps
+	c.mu.Unlock()
 	return ps
 }
 
@@ -195,7 +202,7 @@ func findRepo(dir string) (repo, gitDir string, ok bool) {
 }
 
 func readGitDirFile(path string) (string, bool) {
-	b, err := os.ReadFile(path) //nolint:gosec
+	b, err := readRegularFile(path, false)
 	if err != nil {
 		return "", false
 	}
@@ -215,25 +222,29 @@ func readGitDirFile(path string) (string, bool) {
 func loadBasePatterns(gitDir string) []gitignore.Pattern {
 	var ps []gitignore.Pattern
 	if f := excludesFile(); f != "" {
-		ps = readPatterns(f, nil)
+		ps = readPatterns(f, nil, false)
 	}
 	// A linked worktree shares info/exclude with the main repository.
 	commonDir := gitDir
-	if b, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil { //nolint:gosec
+	if b, err := readRegularFile(filepath.Join(gitDir, "commondir"), false); err == nil {
 		cd := filepath.FromSlash(strings.TrimSpace(string(b)))
 		if !filepath.IsAbs(cd) {
 			cd = filepath.Join(gitDir, cd)
 		}
 		commonDir = cd
 	}
-	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil)...)
+	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false)...)
 }
 
 // loadTracked reads the index of the repository whose git directory is
 // gitDir. A linked worktree has its own index there, so commondir is not
 // followed. When the index cannot be read every path counts as untracked.
 func loadTracked(gitDir string) map[string]struct{} {
-	f, err := os.Open(filepath.Join(gitDir, "index")) //nolint:gosec
+	name := filepath.Join(gitDir, "index")
+	if info, err := os.Stat(name); err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	f, err := os.Open(name) //nolint:gosec
 	if err != nil {
 		return nil
 	}
@@ -289,7 +300,7 @@ func excludesFile() string {
 }
 
 func coreExcludesFile(path string) string {
-	b, err := os.ReadFile(path) //nolint:gosec
+	b, err := readRegularFile(path, false)
 	if err != nil {
 		return ""
 	}
@@ -304,21 +315,47 @@ func coreExcludesFile(path string) string {
 // readPatterns parses an ignore file. go-git's own reader is unexported, and
 // its ReadPatterns walks the whole tree up front, which is what a lazily
 // loading Checker avoids.
-func readPatterns(path string, domain []string) []gitignore.Pattern {
-	b, err := os.ReadFile(path) //nolint:gosec
+func readPatterns(path string, domain []string, nofollow bool) []gitignore.Pattern {
+	b, err := readRegularFile(path, nofollow)
 	if err != nil {
 		return nil
 	}
 	var ps []gitignore.Pattern
-	s := bufio.NewScanner(bytes.NewReader(b))
-	for s.Scan() {
-		line := s.Text()
+	for line := range strings.Lines(string(b)) {
+		line = strings.TrimRight(line, "\r\n")
 		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
 		ps = append(ps, gitignore.ParsePattern(line, domain))
 	}
 	return ps
+}
+
+// maxFileSize bounds what is read from a single ignore or config file.
+const maxFileSize = 1 << 20
+
+// readRegularFile reads path only when it is a regular file, so that a device
+// or a FIFO can neither exhaust memory nor block forever, and reads at most
+// maxFileSize bytes of it. With nofollow, a symlink is refused rather than
+// followed.
+func readRegularFile(path string, nofollow bool) ([]byte, error) {
+	stat := os.Stat
+	if nofollow {
+		stat = os.Lstat
+	}
+	info, err := stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.Open(path) //nolint:gosec
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxFileSize))
 }
 
 func pathWithin(path, base string) bool {

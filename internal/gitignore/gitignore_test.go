@@ -169,6 +169,20 @@ func TestChecker_TrackedFilesAreNotIgnored(t *testing.T) {
 	}
 }
 
+func TestChecker_SymlinkedGitignoreIsRefused(t *testing.T) {
+	d := setupRepo(t)
+	writeFiles(t, d, map[string]string{"rules": "docs/\n", "docs/a.md": ""})
+	if err := os.Remove(filepath.Join(d, ".gitignore")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(d, "rules"), filepath.Join(d, ".gitignore")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if NewChecker(d).Ignored(filepath.Join(d, "docs", "a.md")) {
+		t.Error("a symlinked .gitignore must not be read")
+	}
+}
+
 func TestChecker_GlobalExcludesFile(t *testing.T) {
 	home := isolateGitConfig(t)
 	excludes := filepath.Join(home, "global-ignore")
