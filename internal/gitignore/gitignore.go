@@ -308,11 +308,8 @@ func excludesFile(gitDir, commonDir string) string {
 const maxIncludeDepth = 10
 
 // coreExcludesFile returns core.excludesFile as set by the config file at
-// path or by the files it includes.
-//
-// Included files are applied after the file's own settings. go-git's decoder
-// does not keep where [include] sits relative to [core], and an include at the
-// end for local overrides is the usual layout.
+// path or by the files it includes, applying settings and includes in the
+// order they appear so that the last one wins, as in git.
 func coreExcludesFile(path, home, gitDir string, depth int) string {
 	if depth > maxIncludeDepth {
 		return ""
@@ -321,24 +318,8 @@ func coreExcludesFile(path, home, gitDir string, depth int) string {
 	if err != nil {
 		return ""
 	}
-	cfg := config.New()
-	if err := config.NewDecoder(bytes.NewReader(b)).Decode(cfg); err != nil {
-		slog.Debug("skipping unreadable git config", "path", path, "error", err)
-		return ""
-	}
-	v := cfg.Section("core").Options.Get("excludesfile")
-	var includes []string
-	if cfg.HasSection("include") {
-		includes = cfg.Section("include").Options.GetAll("path")
-	}
-	if cfg.HasSection("includeIf") {
-		for _, ss := range cfg.Section("includeIf").Subsections {
-			if gitDirMatches(ss.Name, path, home, gitDir) {
-				includes = append(includes, ss.Options.GetAll("path")...)
-			}
-		}
-	}
-	for _, inc := range includes {
+	var v string
+	include := func(inc string) {
 		inc = expandHome(inc, home)
 		if !filepath.IsAbs(inc) {
 			inc = filepath.Join(filepath.Dir(path), inc)
@@ -347,7 +328,61 @@ func coreExcludesFile(path, home, gitDir string, depth int) string {
 			v = iv
 		}
 	}
+	// go-git's decoder merges repeated sections, which loses where an
+	// [include] sits relative to [core]. Decoding one section at a time keeps
+	// that order.
+	for _, chunk := range splitSections(b) {
+		cfg := config.New()
+		if err := config.NewDecoder(bytes.NewReader(chunk)).Decode(cfg); err != nil {
+			slog.Debug("skipping unreadable git config section", "path", path, "error", err)
+			continue
+		}
+		for _, s := range cfg.Sections {
+			switch {
+			case s.IsName("core"):
+				for _, o := range s.Options {
+					if o.IsKey("excludesfile") {
+						v = o.Value
+					}
+				}
+			case s.IsName("include"):
+				for _, o := range s.Options {
+					if o.IsKey("path") {
+						include(o.Value)
+					}
+				}
+			case s.IsName("includeIf"):
+				for _, ss := range s.Subsections {
+					if !gitDirMatches(ss.Name, path, home, gitDir) {
+						continue
+					}
+					for _, o := range ss.Options {
+						if o.IsKey("path") {
+							include(o.Value)
+						}
+					}
+				}
+			}
+		}
+	}
 	return v
+}
+
+// splitSections splits a git config file at each section header.
+func splitSections(b []byte) [][]byte {
+	var chunks [][]byte
+	var cur []byte
+	for line := range bytes.Lines(b) {
+		if bytes.HasPrefix(bytes.TrimSpace(line), []byte("[")) && len(cur) > 0 {
+			chunks = append(chunks, cur)
+			cur = nil
+		}
+		cur = append(cur, line...)
+	}
+	if len(cur) > 0 {
+		chunks = append(chunks, cur)
+	}
+	return chunks
 }
 
 // gitDirMatches evaluates an includeIf "gitdir:" or "gitdir/i:" condition

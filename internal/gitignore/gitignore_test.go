@@ -235,6 +235,14 @@ func TestChecker_ExcludesFileFromConfig(t *testing.T) {
 			configs: map[string]string{".gitconfig": "[includeIf \"gitdir:REPO/\"]\n\tpath = ~/work.gitconfig\n", "work.gitconfig": "[core]\n\texcludesFile = EXCLUDES\n"},
 		},
 		{
+			name:    "include before a later core setting",
+			configs: map[string]string{".gitconfig": "[include]\n\tpath = ~/other.gitconfig\n[core]\n\texcludesFile = EXCLUDES\n", "other.gitconfig": "[core]\n\texcludesFile = ~/unused\n"},
+		},
+		{
+			name:    "core setting before a later include",
+			configs: map[string]string{".gitconfig": "[core]\n\texcludesFile = ~/unused\n[include]\n\tpath = ~/other.gitconfig\n", "other.gitconfig": "[core]\n\texcludesFile = EXCLUDES\n"},
+		},
+		{
 			name:    "repository config",
 			configs: map[string]string{"repo:.git/config": "[core]\n\texcludesFile = EXCLUDES\n"},
 		},
