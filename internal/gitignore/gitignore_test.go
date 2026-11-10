@@ -262,6 +262,24 @@ func TestChecker_ExcludesFileFromConfig(t *testing.T) {
 	}
 }
 
+func TestChecker_IncludeIfRelativeDirPrefix(t *testing.T) {
+	for _, cond := range []string{"gitdir:~/work/", "gitdir:./work/"} {
+		t.Run(cond, func(t *testing.T) {
+			home := isolateGitConfig(t)
+			writeFiles(t, home, map[string]string{
+				".gitconfig":     "[includeIf \"" + cond + "\"]\n\tpath = ~/work.gitconfig\n",
+				"work.gitconfig": "[core]\n\texcludesFile = " + filepath.ToSlash(filepath.Join(home, "global-ignore")) + "\n",
+				"global-ignore":  "*.tmp.md\n",
+			})
+			d := filepath.Join(home, "work", "repo")
+			writeFiles(t, d, map[string]string{".git/HEAD": "", "x.tmp.md": ""})
+			if !NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
+				t.Errorf("%s should cover a repository below it", cond)
+			}
+		})
+	}
+}
+
 func TestChecker_IncludeIfOtherGitDir(t *testing.T) {
 	home := isolateGitConfig(t)
 	writeFiles(t, home, map[string]string{

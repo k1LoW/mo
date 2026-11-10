@@ -361,6 +361,9 @@ func gitDirMatches(cond, cfgPath, home, gitDir string) bool {
 		}
 		fold = true
 	}
+	// Expanding ~/ and ./ goes through filepath.Join, which drops the
+	// trailing slash that makes the condition cover every repository below.
+	dirPrefix := strings.HasSuffix(pat, "/")
 	switch {
 	case strings.HasPrefix(pat, "~/"):
 		pat = expandHome(pat, home)
@@ -370,6 +373,9 @@ func gitDirMatches(cond, cfgPath, home, gitDir string) bool {
 		pat = "**/" + pat
 	}
 	pat = filepath.ToSlash(pat)
+	if dirPrefix && !strings.HasSuffix(pat, "/") {
+		pat += "/"
+	}
 	if strings.HasSuffix(pat, "/") {
 		pat += "**"
 	}
