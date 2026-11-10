@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-git/go-git/v5/plumbing/format/config"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
@@ -220,11 +221,8 @@ func readGitDirFile(path string) (string, bool) {
 // loadBasePatterns returns the patterns that apply to the whole repository,
 // lowest priority first.
 func loadBasePatterns(gitDir string) []gitignore.Pattern {
-	var ps []gitignore.Pattern
-	if f := excludesFile(); f != "" {
-		ps = readPatterns(f, nil, false)
-	}
-	// A linked worktree shares info/exclude with the main repository.
+	// A linked worktree shares info/exclude and config with the main
+	// repository.
 	commonDir := gitDir
 	if b, err := readRegularFile(filepath.Join(gitDir, "commondir"), false); err == nil {
 		cd := filepath.FromSlash(strings.TrimSpace(string(b)))
@@ -232,6 +230,10 @@ func loadBasePatterns(gitDir string) []gitignore.Pattern {
 			cd = filepath.Join(gitDir, cd)
 		}
 		commonDir = cd
+	}
+	var ps []gitignore.Pattern
+	if f := excludesFile(gitDir, commonDir); f != "" {
+		ps = readPatterns(f, nil, false)
 	}
 	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false)...)
 }
@@ -271,9 +273,9 @@ func loadTracked(gitDir string) map[string]struct{} {
 //
 // go-git's LoadGlobalPatterns is not used because it opens ~/.gitconfig
 // through a billy filesystem rooted at "/", which cannot reach a Windows
-// home directory, and it neither reads $XDG_CONFIG_HOME/git/config nor falls
-// back to the default ignore file.
-func excludesFile() string {
+// home directory, and it reads neither $XDG_CONFIG_HOME/git/config, the
+// repository config nor includes, nor falls back to the default ignore file.
+func excludesFile(gitDir, commonDir string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		slog.Debug("skipping global git excludes", "error", err)
@@ -285,21 +287,36 @@ func excludesFile() string {
 	}
 	// Later files take precedence, as in git.
 	var excludes string
-	for _, cfg := range []string{"/etc/gitconfig", filepath.Join(xdg, "git", "config"), filepath.Join(home, ".gitconfig")} {
-		if v := coreExcludesFile(cfg); v != "" {
+	cfgs := []string{
+		"/etc/gitconfig",
+		filepath.Join(xdg, "git", "config"),
+		filepath.Join(home, ".gitconfig"),
+		filepath.Join(commonDir, "config"),
+	}
+	for _, cfg := range cfgs {
+		if v := coreExcludesFile(cfg, home, gitDir, 0); v != "" {
 			excludes = v
 		}
 	}
 	if excludes == "" {
 		return filepath.Join(xdg, "git", "ignore")
 	}
-	if rest, ok := strings.CutPrefix(excludes, "~/"); ok {
-		return filepath.Join(home, filepath.FromSlash(rest))
-	}
-	return filepath.FromSlash(excludes)
+	return expandHome(excludes, home)
 }
 
-func coreExcludesFile(path string) string {
+// maxIncludeDepth is git's limit on nested config includes.
+const maxIncludeDepth = 10
+
+// coreExcludesFile returns core.excludesFile as set by the config file at
+// path or by the files it includes.
+//
+// Included files are applied after the file's own settings. go-git's decoder
+// does not keep where [include] sits relative to [core], and an include at the
+// end for local overrides is the usual layout.
+func coreExcludesFile(path, home, gitDir string, depth int) string {
+	if depth > maxIncludeDepth {
+		return ""
+	}
 	b, err := readRegularFile(path, false)
 	if err != nil {
 		return ""
@@ -309,7 +326,66 @@ func coreExcludesFile(path string) string {
 		slog.Debug("skipping unreadable git config", "path", path, "error", err)
 		return ""
 	}
-	return cfg.Section("core").Options.Get("excludesfile")
+	v := cfg.Section("core").Options.Get("excludesfile")
+	var includes []string
+	if cfg.HasSection("include") {
+		includes = cfg.Section("include").Options.GetAll("path")
+	}
+	if cfg.HasSection("includeIf") {
+		for _, ss := range cfg.Section("includeIf").Subsections {
+			if gitDirMatches(ss.Name, path, home, gitDir) {
+				includes = append(includes, ss.Options.GetAll("path")...)
+			}
+		}
+	}
+	for _, inc := range includes {
+		inc = expandHome(inc, home)
+		if !filepath.IsAbs(inc) {
+			inc = filepath.Join(filepath.Dir(path), inc)
+		}
+		if iv := coreExcludesFile(inc, home, gitDir, depth+1); iv != "" {
+			v = iv
+		}
+	}
+	return v
+}
+
+// gitDirMatches evaluates an includeIf "gitdir:" or "gitdir/i:" condition
+// against gitDir. Other conditions such as onbranch are never met.
+func gitDirMatches(cond, cfgPath, home, gitDir string) bool {
+	pat, ok := strings.CutPrefix(cond, "gitdir:")
+	fold := false
+	if !ok {
+		if pat, ok = strings.CutPrefix(cond, "gitdir/i:"); !ok {
+			return false
+		}
+		fold = true
+	}
+	switch {
+	case strings.HasPrefix(pat, "~/"):
+		pat = expandHome(pat, home)
+	case strings.HasPrefix(pat, "./"):
+		pat = filepath.Join(filepath.Dir(cfgPath), pat[2:])
+	case !filepath.IsAbs(filepath.FromSlash(pat)):
+		pat = "**/" + pat
+	}
+	pat = filepath.ToSlash(pat)
+	if strings.HasSuffix(pat, "/") {
+		pat += "**"
+	}
+	target := filepath.ToSlash(gitDir)
+	if fold {
+		pat, target = strings.ToLower(pat), strings.ToLower(target)
+	}
+	matched, err := doublestar.Match(pat, target)
+	return err == nil && matched
+}
+
+func expandHome(p, home string) string {
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		return filepath.Join(home, filepath.FromSlash(rest))
+	}
+	return filepath.FromSlash(p)
 }
 
 // readPatterns parses an ignore file. go-git's own reader is unexported, and

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing/filemode"
@@ -197,6 +198,69 @@ func TestChecker_GlobalExcludesFile(t *testing.T) {
 	writeFiles(t, d, map[string]string{"x.tmp.md": ""})
 	if !NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
 		t.Error("x.tmp.md should be ignored by core.excludesFile")
+	}
+}
+
+func TestChecker_ExcludesFileFromConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		// configs maps a path relative to the home directory, or to the
+		// repository when prefixed with "repo:", to its content. "EXCLUDES"
+		// is replaced with the excludes file path, and "REPO" with the
+		// repository path.
+		configs map[string]string
+	}{
+		{
+			name:    "include",
+			configs: map[string]string{".gitconfig": "[include]\n\tpath = ~/.gitconfig.local\n", ".gitconfig.local": "[core]\n\texcludesFile = EXCLUDES\n"},
+		},
+		{
+			name:    "relative include",
+			configs: map[string]string{".gitconfig": "[include]\n\tpath = conf/extra\n", "conf/extra": "[core]\n\texcludesFile = EXCLUDES\n"},
+		},
+		{
+			name:    "includeIf gitdir",
+			configs: map[string]string{".gitconfig": "[includeIf \"gitdir:REPO/\"]\n\tpath = ~/work.gitconfig\n", "work.gitconfig": "[core]\n\texcludesFile = EXCLUDES\n"},
+		},
+		{
+			name:    "repository config",
+			configs: map[string]string{"repo:.git/config": "[core]\n\texcludesFile = EXCLUDES\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := isolateGitConfig(t)
+			d := t.TempDir()
+			excludes := filepath.ToSlash(filepath.Join(home, "global-ignore"))
+			writeFiles(t, home, map[string]string{"global-ignore": "*.tmp.md\n"})
+			writeFiles(t, d, map[string]string{".git/HEAD": "", "x.tmp.md": ""})
+			for p, c := range tt.configs {
+				c = strings.ReplaceAll(c, "EXCLUDES", excludes)
+				c = strings.ReplaceAll(c, "REPO", filepath.ToSlash(d))
+				if rel, ok := strings.CutPrefix(p, "repo:"); ok {
+					writeFiles(t, d, map[string]string{rel: c})
+				} else {
+					writeFiles(t, home, map[string]string{p: c})
+				}
+			}
+			if !NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
+				t.Error("x.tmp.md should be ignored by core.excludesFile")
+			}
+		})
+	}
+}
+
+func TestChecker_IncludeIfOtherGitDir(t *testing.T) {
+	home := isolateGitConfig(t)
+	writeFiles(t, home, map[string]string{
+		".gitconfig":     "[includeIf \"gitdir:/nowhere/\"]\n\tpath = ~/work.gitconfig\n",
+		"work.gitconfig": "[core]\n\texcludesFile = " + filepath.ToSlash(filepath.Join(home, "global-ignore")) + "\n",
+		"global-ignore":  "*.tmp.md\n",
+	})
+	d := t.TempDir()
+	writeFiles(t, d, map[string]string{".git/HEAD": "", "x.tmp.md": ""})
+	if NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
+		t.Error("an includeIf for another gitdir must not apply")
 	}
 }
 
