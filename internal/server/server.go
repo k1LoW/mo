@@ -1423,6 +1423,12 @@ func (s *State) watchDirsForPattern(gp *GlobPattern) map[string]struct{} {
 func (s *State) releaseUnwalkedDirs(gp *GlobPattern, inherited []string, walked map[string]struct{}) {
 	var stale []string
 	s.mu.Lock()
+	// A later replacement shares this watchedDirs map, and pruning it from
+	// here would release watches the current pattern still needs.
+	if !slices.Contains(s.patterns, gp) {
+		s.mu.Unlock()
+		return
+	}
 	for _, dir := range inherited {
 		if _, ok := walked[dir]; ok {
 			continue
