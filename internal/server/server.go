@@ -821,7 +821,7 @@ func (s *State) AddPattern(absPattern, groupName string, opts ...PatternOption) 
 	if prev != nil {
 		// Files already open below directories the new setting ignores stay
 		// open, as they do on --unwatch; only their watches are released.
-		s.releaseUnwalkedDirs(gp, inherited, walked)
+		s.releaseIgnoredDirs(gp, inherited, walked)
 		s.markDirty()
 	}
 
@@ -1416,11 +1416,22 @@ func (s *State) watchDirsForPattern(gp *GlobPattern) map[string]struct{} {
 	return walked
 }
 
-// releaseUnwalkedDirs drops the watches gp inherited from the pattern it
-// replaced for directories it no longer covers. Only the inherited ones are
-// candidates, because the watch loop may add a directory created after the
-// walk passed it, and that one is covered although it is not in walked.
-func (s *State) releaseUnwalkedDirs(gp *GlobPattern, inherited []string, walked map[string]struct{}) {
+// releaseIgnoredDirs drops the watches gp inherited from the pattern it
+// replaced for directories its checker now ignores. Only the inherited ones
+// are candidates, because the watch loop may add a directory created after
+// the walk passed it. Missing from walked is not enough either, because a
+// walk through a symlink that dangles for a moment cannot reach what is
+// below it although the pattern still covers it.
+func (s *State) releaseIgnoredDirs(gp *GlobPattern, inherited []string, walked map[string]struct{}) {
+	var ignored []string
+	for _, dir := range inherited {
+		if _, ok := walked[dir]; !ok && gp.ignore.Ignored(dir) {
+			ignored = append(ignored, dir)
+		}
+	}
+	if len(ignored) == 0 {
+		return
+	}
 	var stale []string
 	s.mu.Lock()
 	// A later replacement shares this watchedDirs map, and pruning it from
@@ -1429,10 +1440,7 @@ func (s *State) releaseUnwalkedDirs(gp *GlobPattern, inherited []string, walked 
 		s.mu.Unlock()
 		return
 	}
-	for _, dir := range inherited {
-		if _, ok := walked[dir]; ok {
-			continue
-		}
+	for _, dir := range ignored {
 		if _, ok := gp.watchedDirs[dir]; ok {
 			delete(gp.watchedDirs, dir)
 			stale = append(stale, dir)
