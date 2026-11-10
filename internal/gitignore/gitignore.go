@@ -142,18 +142,18 @@ func (c *Checker) match(path string, isDir bool, from string) bool {
 		return false
 	}
 	segs := strings.Split(rel, string(filepath.Separator))
+	// Only the queried path itself is exempt. An untracked file below an
+	// ignored directory stays ignored even when that directory also holds
+	// tracked files.
+	if _, ok := c.tracked[strings.Join(segs, "/")]; ok {
+		return false
+	}
 	patterns := slices.Clone(c.base)
 	dir := c.repo
 	for i := range segs {
 		patterns = append(patterns, c.dirPatterns(dir, segs[:i])...)
 		dir = filepath.Join(dir, segs[i])
 		last := i == len(segs)-1
-		if _, ok := c.tracked[strings.Join(segs[:i+1], "/")]; ok {
-			if last {
-				return false
-			}
-			continue
-		}
 		if !pathWithin(dir, from) {
 			continue
 		}

@@ -146,7 +146,9 @@ func TestChecker_Rules(t *testing.T) {
 func TestChecker_TrackedFilesAreNotIgnored(t *testing.T) {
 	d := setupRepo(t)
 	writeFiles(t, d, map[string]string{
-		".gitignore":     "build/\nsecret.md\n",
+		// The negation cannot bring back build/other.md, because its parent
+		// stays excluded although it holds the tracked build/keep.md.
+		".gitignore":     "build/\nsecret.md\n!build/other.md\n",
 		"build/keep.md":  "",
 		"build/other.md": "",
 		"secret.md":      "",
