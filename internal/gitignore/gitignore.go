@@ -402,6 +402,14 @@ func readPatterns(path string, domain []string, nofollow bool) []gitignore.Patte
 		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
+		// In git a trailing "/**" matches everything inside a directory but
+		// not the directory itself, so a later negation can still reach a
+		// file below it. go-git's matcher also matches the directory, which
+		// would make the parent check in match skip it, so require at least
+		// one more segment.
+		if trimmed := strings.TrimRight(line, " "); strings.HasSuffix(trimmed, "/**") {
+			line = trimmed + "/*"
+		}
 		ps = append(ps, gitignore.ParsePattern(line, domain))
 	}
 	return ps

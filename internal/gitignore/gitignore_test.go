@@ -103,6 +103,18 @@ func TestChecker_Rules(t *testing.T) {
 			want:  true,
 		},
 		{
+			name:  "trailing /** does not ignore the directory itself",
+			files: map[string]string{".gitignore": "build/**\n!build/keep.md\n", "build/keep.md": ""},
+			rel:   "build/keep.md",
+			want:  false,
+		},
+		{
+			name:  "trailing /** ignores everything inside",
+			files: map[string]string{".gitignore": "build/**\n", "build/sub/x.md": ""},
+			rel:   "build/sub/x.md",
+			want:  true,
+		},
+		{
 			name:  "negation re-includes a file",
 			files: map[string]string{".gitignore": "*.md\n!keep.md\n", "keep.md": ""},
 			rel:   "keep.md",
