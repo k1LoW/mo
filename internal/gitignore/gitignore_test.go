@@ -302,6 +302,43 @@ func TestChecker_IncludeIfOtherGitDir(t *testing.T) {
 	}
 }
 
+func TestChecker_EmptyExcludesFileDisablesIt(t *testing.T) {
+	tests := []struct {
+		name    string
+		configs map[string]string
+	}{
+		{
+			name: "repository config clears the user setting",
+			configs: map[string]string{
+				".gitconfig":       "[core]\n\texcludesFile = ~/global-ignore\n",
+				"repo:.git/config": "[core]\n\texcludesFile =\n",
+			},
+		},
+		{
+			name:    "empty value skips the default file",
+			configs: map[string]string{".gitconfig": "[core]\n\texcludesFile =\n", ".config/git/ignore": "*.tmp.md\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := isolateGitConfig(t)
+			d := t.TempDir()
+			writeFiles(t, home, map[string]string{"global-ignore": "*.tmp.md\n"})
+			writeFiles(t, d, map[string]string{".git/HEAD": "", "x.tmp.md": ""})
+			for p, c := range tt.configs {
+				if rel, ok := strings.CutPrefix(p, "repo:"); ok {
+					writeFiles(t, d, map[string]string{rel: c})
+				} else {
+					writeFiles(t, home, map[string]string{p: c})
+				}
+			}
+			if NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
+				t.Error("an empty core.excludesFile must disable the excludes file")
+			}
+		})
+	}
+}
+
 func TestChecker_DefaultGlobalIgnore(t *testing.T) {
 	home := isolateGitConfig(t)
 	writeFiles(t, home, map[string]string{".config/git/ignore": "*.tmp.md\n"})

@@ -285,8 +285,10 @@ func excludesFile(gitDir, commonDir string) string {
 	if xdg == "" {
 		xdg = filepath.Join(home, ".config")
 	}
-	// Later files take precedence, as in git.
+	// Later files take precedence, as in git. An explicitly empty value
+	// overrides an earlier one and disables the default file too.
 	var excludes string
+	set := false
 	cfgs := []string{
 		"/etc/gitconfig",
 		filepath.Join(xdg, "git", "config"),
@@ -294,12 +296,15 @@ func excludesFile(gitDir, commonDir string) string {
 		filepath.Join(commonDir, "config"),
 	}
 	for _, cfg := range cfgs {
-		if v := coreExcludesFile(cfg, home, gitDir, 0); v != "" {
-			excludes = v
+		if v, ok := coreExcludesFile(cfg, home, gitDir, 0); ok {
+			excludes, set = v, true
 		}
 	}
-	if excludes == "" {
+	if !set {
 		return filepath.Join(xdg, "git", "ignore")
+	}
+	if excludes == "" {
+		return ""
 	}
 	return expandHome(excludes, home)
 }
@@ -309,23 +314,23 @@ const maxIncludeDepth = 10
 
 // coreExcludesFile returns core.excludesFile as set by the config file at
 // path or by the files it includes, applying settings and includes in the
-// order they appear so that the last one wins, as in git.
-func coreExcludesFile(path, home, gitDir string, depth int) string {
+// order they appear so that the last one wins, as in git. set reports whether
+// the setting appeared at all, since an empty value is meaningful.
+func coreExcludesFile(path, home, gitDir string, depth int) (v string, set bool) {
 	if depth > maxIncludeDepth {
-		return ""
+		return "", false
 	}
 	b, err := readRegularFile(path, false)
 	if err != nil {
-		return ""
+		return "", false
 	}
-	var v string
 	include := func(inc string) {
 		inc = expandHome(inc, home)
 		if !filepath.IsAbs(inc) {
 			inc = filepath.Join(filepath.Dir(path), inc)
 		}
-		if iv := coreExcludesFile(inc, home, gitDir, depth+1); iv != "" {
-			v = iv
+		if iv, ok := coreExcludesFile(inc, home, gitDir, depth+1); ok {
+			v, set = iv, true
 		}
 	}
 	// go-git's decoder merges repeated sections, which loses where an
@@ -342,7 +347,7 @@ func coreExcludesFile(path, home, gitDir string, depth int) string {
 			case s.IsName("core"):
 				for _, o := range s.Options {
 					if o.IsKey("excludesfile") {
-						v = o.Value
+						v, set = o.Value, true
 					}
 				}
 			case s.IsName("include"):
@@ -365,7 +370,7 @@ func coreExcludesFile(path, home, gitDir string, depth int) string {
 			}
 		}
 	}
-	return v
+	return v, set
 }
 
 // splitSections splits a git config file at each section header.
