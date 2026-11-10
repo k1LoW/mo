@@ -89,7 +89,7 @@ func NewChecker(root string) *Checker {
 		root:    root,
 		real:    real,
 		repo:    repo,
-		base:    loadBasePatterns(gitDir, gitDirs),
+		base:    loadBasePatterns(gitDir, gitDirs, real),
 		tracked: tracked,
 		dirs:    make(map[string][]gitignore.Pattern),
 	}
@@ -257,10 +257,10 @@ func readGitDirFile(path string) (string, bool) {
 
 // loadBasePatterns returns the patterns that apply to the whole repository,
 // lowest priority first.
-func loadBasePatterns(gitDir string, gitDirs []string) []gitignore.Pattern {
+func loadBasePatterns(gitDir string, gitDirs []string, root string) []gitignore.Pattern {
 	commonDir := commonGitDir(gitDir)
 	var ps []gitignore.Pattern
-	if f := excludesFile(gitDirs, commonDir); f != "" {
+	if f := excludesFile(gitDirs, commonDir, root); f != "" {
 		ps = readPatterns(f, nil, false)
 	}
 	return append(ps, readPatterns(filepath.Join(commonDir, "info", "exclude"), nil, false)...)
@@ -370,7 +370,10 @@ func fileSize(f *os.File) int64 {
 // through a billy filesystem rooted at "/", which cannot reach a Windows
 // home directory, and it reads neither $XDG_CONFIG_HOME/git/config, the
 // repository config nor includes, nor falls back to the default ignore file.
-func excludesFile(gitDirs []string, commonDir string) string {
+//
+// A relative value is taken from root, because the git-based checker this
+// replaced ran git from there rather than from mo's working directory.
+func excludesFile(gitDirs []string, commonDir, root string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		slog.Debug("skipping global git excludes", "error", err)
@@ -402,7 +405,11 @@ func excludesFile(gitDirs []string, commonDir string) string {
 	if excludes == "" {
 		return ""
 	}
-	return expandHome(excludes, home)
+	p := expandHome(excludes, home)
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(root, p)
+	}
+	return p
 }
 
 // maxIncludeDepth is git's limit on nested config includes.

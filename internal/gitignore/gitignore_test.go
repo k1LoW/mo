@@ -417,6 +417,20 @@ func TestChecker_IncludeIfRelativeDirPrefix(t *testing.T) {
 	}
 }
 
+func TestChecker_RelativeExcludesFile(t *testing.T) {
+	isolateGitConfig(t)
+	d := t.TempDir()
+	writeFiles(t, d, map[string]string{
+		".git/config":  "[core]\n\texcludesFile = ignore.rules\n",
+		"ignore.rules": "*.tmp.md\n",
+		"x.tmp.md":     "",
+	})
+	t.Chdir(t.TempDir())
+	if !NewChecker(d).Ignored(filepath.Join(d, "x.tmp.md")) {
+		t.Error("a relative core.excludesFile should be read from the checker root")
+	}
+}
+
 func TestChecker_SelfIncludingConfigFinishes(t *testing.T) {
 	isolateGitConfig(t)
 	d := t.TempDir()
