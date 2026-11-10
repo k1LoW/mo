@@ -3099,9 +3099,9 @@ func TestAddPattern_GitIgnore(t *testing.T) {
 		}
 	}
 
-	// Re-adding it without WithNoIgnore downgrades it again: the last setting
-	// wins. Files already open stay open, but the ignored directories are no
-	// longer watched.
+	// Re-adding it without WithNoIgnore downgrades it again, so the last
+	// setting wins. Files already open stay open, but the ignored directories
+	// are no longer watched.
 	if _, err := s.AddPattern(pattern, "default"); err != nil {
 		t.Fatal(err)
 	}

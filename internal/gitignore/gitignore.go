@@ -41,7 +41,7 @@ type Checker struct {
 // NewChecker returns a Checker for the paths below root.
 //
 // It returns nil (nothing is ignored) when root is not in a git repository,
-// or root itself is ignored: pointing mo at an ignored directory explicitly
+// or root itself is ignored. Pointing mo at an ignored directory explicitly
 // means the user wants its contents.
 func NewChecker(root string) *Checker {
 	root, err := filepath.Abs(root)
