@@ -51,7 +51,9 @@ func TestWithLoopbackHostOnly(t *testing.T) {
 	t.Parallel()
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("document content"))
+		if _, err := w.Write([]byte("document content")); err != nil {
+			t.Error(err)
+		}
 	})
 	handler := WithLoopbackHostOnly(next)
 
