@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.8.1](https://github.com/k1LoW/mo/compare/v1.8.0...v1.8.1) - 2026-11-17
+
+### Dependency Updates ⬆️
+- chore(deps): bump the dependencies group in /internal/frontend with 11 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/328
+- chore(deps): bump golang.org/x/text from 0.43.0 to 0.44.0 in the dependencies group by @dependabot[bot] in https://github.com/k1LoW/mo/pull/326
+- chore(deps): bump the dependencies group with 2 updates by @dependabot[bot] in https://github.com/k1LoW/mo/pull/327
+
 ## [v1.8.0](https://github.com/k1LoW/mo/compare/v1.7.0...v1.8.0) - 2026-11-10
 
 ### Breaking Changes 🛠
