@@ -2359,6 +2359,12 @@ func handleFileRaw(state *State) http.HandlerFunc {
 		absPath := filepath.Join(filepath.Dir(entry.Path), relPath)
 		absPath = filepath.Clean(absPath)
 
+		// Files next to a document are written by whoever wrote the repository, so an
+		// HTML or SVG file opened through a link must not run script in mo's origin,
+		// where it could call the API. Add rather than Set keeps the policy from withCSP.
+		w.Header().Add("Content-Security-Policy", "sandbox")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+
 		// No boundary check: mo serves local files to the user's own browser
 		// (like handleOpenFile); http.ServeFile already rejects "..".
 		http.ServeFile(w, r, absPath) //nolint:gosec // G703: intentional, see comment above
