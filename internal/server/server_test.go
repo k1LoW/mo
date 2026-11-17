@@ -2514,6 +2514,57 @@ func TestHandleFileRaw_PercentEncodedNonASCII(t *testing.T) {
 	}
 }
 
+func TestHandleFileRaw_SandboxesServedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	mdFile := filepath.Join(tmpDir, "index.md")
+	if err := os.WriteFile(mdFile, []byte("# Index"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assets := map[string]string{
+		"payload.html": "<script src=\"payload.js\"></script>",
+		"payload.svg":  "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>",
+		"image.png":    "\x89PNG\r\n\x1a\n",
+	}
+	for name, content := range assets {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mdID := FileID(mdFile)
+	s := newTestState(t)
+	s.groups[DefaultGroup] = &Group{
+		Name: DefaultGroup,
+		Files: []*FileEntry{
+			{ID: mdID, Name: "index.md", Path: mdFile},
+		},
+	}
+	handler := NewHandler(s)
+
+	for name := range assets {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", fmt.Sprintf("/_/api/groups/%s/files/%s/raw/%s", DefaultGroup, mdID, name), nil)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
+			}
+			policies := rec.Header().Values("Content-Security-Policy")
+			if !slices.Contains(policies, "sandbox") {
+				t.Errorf("Content-Security-Policy = %q, want a sandbox policy", policies)
+			}
+			if len(policies) < 2 {
+				t.Errorf("Content-Security-Policy = %q, want the default policy kept alongside sandbox", policies)
+			}
+			if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want %q", got, "nosniff")
+			}
+		})
+	}
+}
+
 // Regression test: Groups() must return deep copies so JSON encoding does
 // not race with Title updates from the file watcher.
 func TestGroupsRaceWithTitleUpdate(t *testing.T) {
