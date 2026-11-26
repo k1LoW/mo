@@ -3,7 +3,7 @@ module github.com/k1LoW/mo
 go 1.26.8
 
 require (
-	github.com/bmatcuk/doublestar/v4 v4.10.4
+	github.com/bmatcuk/doublestar/v4 v4.10.7
 	github.com/fswatcher/fswatcher v0.1.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/k1LoW/donegroup v1.10.4
