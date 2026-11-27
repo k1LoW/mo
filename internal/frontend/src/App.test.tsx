@@ -13,7 +13,20 @@ import {
 
 // Mocks are hoisted by vi.mock so heavy render dependencies never load in jsdom.
 vi.mock("./components/MarkdownViewer", () => ({
-  MarkdownViewer: ({ fileId }: { fileId: string }) => <div data-testid="viewer">{fileId}</div>,
+  MarkdownViewer: ({
+    fileId,
+    onFileOpened,
+  }: {
+    fileId: string;
+    onFileOpened: (fileId: string, hash: string) => void;
+  }) => (
+    <>
+      <div data-testid="viewer">{fileId}</div>
+      <button onClick={() => onFileOpened("bbb22222", "#second-section")}>
+        Second section of GUIDE.md
+      </button>
+    </>
+  ),
 }));
 
 vi.mock("./hooks/useSSE", () => ({ useSSE: () => {} }));
@@ -130,6 +143,9 @@ describe("App URL sync", () => {
       if (url === "/_/api/groups") {
         return Promise.resolve({ ok: true, json: async () => groupsPayload });
       }
+      if (url === "/_/api/groups/default/files/open") {
+        return Promise.resolve({ ok: true, json: async () => groupsPayload[0].files[1] });
+      }
       return Promise.resolve({ ok: true, json: async () => ({}) });
     });
   }
@@ -206,6 +222,33 @@ describe("App URL sync", () => {
     await waitFor(() => {
       expect(window.location.search).toBe("?file=aaa11111");
     });
+  });
+
+  it("keeps the hash in the URL when a link opens another file", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => {
+      expect(window.location.search).toBe("?file=aaa11111");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Second section of GUIDE.md" }));
+
+    expect(window.location.search).toBe("?file=bbb22222");
+    expect(window.location.hash).toBe("#second-section");
+    await waitFor(() => {
+      expect(screen.getByTestId("viewer")).toHaveTextContent("bbb22222");
+    });
+  });
+
+  it("keeps the hash in the URL when a new tab resolves a relative link", async () => {
+    setUrl("/?from=aaa11111&open=GUIDE.md#second-section");
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("viewer")).toHaveTextContent("bbb22222");
+    });
+    expect(window.location.search).toBe("?file=bbb22222");
+    expect(window.location.hash).toBe("#second-section");
   });
 
   it("follows back/forward navigation via popstate", async () => {
