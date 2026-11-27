@@ -134,6 +134,16 @@ describe("buildRelativeOpenUrl", () => {
     );
   });
 
+  it("appends the hash after the query", () => {
+    const url = buildRelativeOpenUrl("default", "abc12345", "other.md", "#second-section");
+    const parsed = new URL(url, "http://localhost");
+    expect(parsed.hash).toBe("#second-section");
+    expect(parseRelativeOpenFromSearch(parsed.search)).toEqual({
+      from: "abc12345",
+      open: "other.md",
+    });
+  });
+
   it("round-trips a path with spaces back to the original", () => {
     const url = buildRelativeOpenUrl("default", "abc12345", "a b.md");
     expect(parseRelativeOpenFromSearch(url.slice(url.indexOf("?")))?.open).toBe("a b.md");

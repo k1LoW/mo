@@ -229,6 +229,21 @@ export function App() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveGroup(parseGroupFromPath(window.location.pathname));
+      setActiveFileId(parseFileIdFromSearch(window.location.search));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const { onContentRendered: applyHashOnRender, followHash } = useHashNavigation(
+    scrollContainer,
+    activeGroup,
+    activeFileId,
+  );
+
   // A relative Markdown link opened in a new tab lands here with from/open params
   // because the target file has no ID until the server resolves it. Resolve it once
   // on load, then rewrite the URL to the canonical ?file= form.
@@ -244,14 +259,15 @@ export function App() {
       .then((entry) => {
         relativeOpen.current = null;
         setInitialFileId(entry.id);
-        window.history.replaceState(null, "", buildFileUrl(group, entry.id));
+        window.history.replaceState(null, "", buildFileUrl(group, entry.id) + window.location.hash);
+        followHash(entry.id);
         loadGroups();
       })
       .catch(() => {
         relativeOpen.current = null;
         window.history.replaceState(null, "", groupToPath(group));
       });
-  }, [loadGroups]);
+  }, [loadGroups, followHash]);
 
   // User-initiated navigation (file/group selection) calls pushState directly at
   // the call site. This effect only reconciles the URL with state for automatic
@@ -267,15 +283,6 @@ export function App() {
     if (window.location.pathname + window.location.search === expectedUrl) return;
     window.history.replaceState(null, "", expectedUrl);
   }, [activeGroup, activeFileId, initialFileId]);
-
-  useEffect(() => {
-    const handlePopState = () => {
-      setActiveGroup(parseGroupFromPath(window.location.pathname));
-      setActiveFileId(parseFileIdFromSearch(window.location.search));
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
 
   useEffect(() => {
     if (!searchQuery?.trim()) {
@@ -419,12 +426,13 @@ export function App() {
   );
 
   const handleFileOpened = useCallback(
-    (fileId: string) => {
-      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId));
+    (fileId: string, hash: string) => {
+      window.history.pushState(null, "", buildFileUrl(activeGroup, fileId) + hash);
       setActiveFileId(fileId);
       setPendingSearchHeading(null);
+      followHash(fileId);
     },
-    [activeGroup],
+    [activeGroup, followHash],
   );
 
   const handleSearchResultSelect = useCallback(
@@ -464,12 +472,6 @@ export function App() {
   const { captureScrollPosition, onContentRendered: restoreScrollOnRender } = useScrollRestoration(
     scrollContainer,
     activeHeadingId,
-    activeFileId,
-  );
-
-  const { onContentRendered: applyHashOnRender } = useHashNavigation(
-    scrollContainer,
-    activeGroup,
     activeFileId,
   );
 

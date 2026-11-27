@@ -44,9 +44,10 @@ export function buildRelativeOpenUrl(
   groupName: string,
   sourceFileId: string,
   relativePath: string,
+  hash = "",
 ): string {
   const params = new URLSearchParams({ from: sourceFileId, open: relativePath });
-  return `${groupToPath(groupName)}?${params.toString()}`;
+  return `${groupToPath(groupName)}?${params.toString()}${hash}`;
 }
 
 export function parseRelativeOpenFromSearch(search: string): RelativeOpenRequest | null {

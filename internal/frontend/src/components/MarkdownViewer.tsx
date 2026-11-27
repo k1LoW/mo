@@ -86,7 +86,7 @@ interface MarkdownViewerProps {
   scrollContainer?: HTMLElement | null;
   activeGroup: string;
   revision: number;
-  onFileOpened: (fileId: string) => void;
+  onFileOpened: (fileId: string, hash: string) => void;
   onHeadingsChange: (headings: TocHeading[]) => void;
   onContentRendered?: () => void;
   isTocOpen: boolean;
@@ -617,11 +617,11 @@ export function MarkdownViewer({
   }, [activeGroup, fileId, revision]);
 
   const handleLinkClick = useCallback(
-    async (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    async (e: React.MouseEvent<HTMLAnchorElement>, href: string, hash: string) => {
       e.preventDefault();
       try {
         const entry = await openRelativeFile(activeGroup, fileId, href);
-        onFileOpened(entry.id);
+        onFileOpened(entry.id, hash);
       } catch {
         // fallback: do nothing
       }
@@ -703,13 +703,13 @@ export function MarkdownViewer({
           case "markdown":
             return (
               <a
-                href={buildRelativeOpenUrl(activeGroup, fileId, resolved.hrefPath)}
+                href={buildRelativeOpenUrl(activeGroup, fileId, resolved.hrefPath, resolved.hash)}
                 onClick={(e) => {
                   // Modifier / middle clicks fall through so the browser opens the
                   // self-resolving href in a new tab (App resolves it on load); only a
                   // plain click navigates in place.
                   if (!isPlainLeftClick(e)) return;
-                  handleLinkClick(e, resolved.hrefPath);
+                  handleLinkClick(e, resolved.hrefPath, resolved.hash);
                 }}
                 {...props}
               >

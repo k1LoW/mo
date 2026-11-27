@@ -13,6 +13,12 @@ function currentFileId(): string | null {
   return parseFileIdFromSearch(window.location.search);
 }
 
+function pendingFromUrl(fileId: string | null): PendingHeading | null {
+  const id = headingIdFromHash(window.location.hash);
+  if (!id) return null;
+  return { group: parseGroupFromPath(window.location.pathname), fileId, id };
+}
+
 function matchesCurrentUrl(pending: PendingHeading): boolean {
   return (
     pending.group === parseGroupFromPath(window.location.pathname) &&
@@ -47,13 +53,14 @@ export function useHashNavigation(
   useEffect(() => {
     const handlePopState = () => {
       pendingRef.current = null;
-      const id = headingIdFromHash(window.location.hash);
-      if (!id) return;
-      const fileId = currentFileId();
+      const pending = pendingFromUrl(currentFileId());
+      if (!pending) return;
       // The last rendered file may already have been replaced by another file's
       // loading state, so only a mounted heading proves hashchange can reach it.
-      if (renderedFileRef.current === fileId && document.getElementById(id)) return;
-      pendingRef.current = { group: parseGroupFromPath(window.location.pathname), fileId, id };
+      if (renderedFileRef.current === pending.fileId && document.getElementById(pending.id)) {
+        return;
+      }
+      pendingRef.current = pending;
     };
     const handleHashChange = () => {
       // A traversal to another file also fires hashchange, after popstate. That
@@ -99,5 +106,14 @@ export function useHashNavigation(
     }
   }, []);
 
-  return { onContentRendered };
+  // Called after pushState or replaceState, which do not fire popstate.
+  const followHash = useCallback((fileId: string) => {
+    pendingRef.current = null;
+    const pending = pendingFromUrl(fileId);
+    if (!pending) return;
+    if (renderedFileRef.current === fileId && scrollToHeading(pending.id)) return;
+    pendingRef.current = pending;
+  }, []);
+
+  return { onContentRendered, followHash };
 }

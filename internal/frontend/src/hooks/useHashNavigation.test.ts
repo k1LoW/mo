@@ -222,6 +222,31 @@ describe("useHashNavigation", () => {
     expect(container.scrollTop).toBe(0);
   });
 
+  it("lands on the heading once a file opened with a hash renders", () => {
+    const container = makeContainer();
+    placeAt(container, 50);
+    const { result, rerender } = renderForFile(container, "file1");
+
+    window.history.pushState(null, "", "/?file=file2#usage");
+    result.current.followHash("file2");
+    result.current.onContentRendered();
+    rerender({ id: "file2" });
+    placeAt(addHeading("usage"), 350);
+    result.current.onContentRendered();
+
+    expect(container.scrollTop).toBe(300);
+  });
+
+  it("scrolls at once when the file opened with a hash is already shown", () => {
+    const heading = addHeading("usage");
+    const { result } = renderForFile(makeContainer(), "file1");
+
+    window.history.pushState(null, "", "/?file=file1#usage");
+    result.current.followHash("file1");
+
+    expect(heading.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+  });
+
   it("follows hash changes after a group switch that kept the file and did not render again", () => {
     const heading = addHeading("usage");
     const container = makeContainer();

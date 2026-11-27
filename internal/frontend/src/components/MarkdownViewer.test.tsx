@@ -190,8 +190,34 @@ describe("MarkdownViewer relative links", () => {
     const notPrevented = fireEvent.click(link);
 
     expect(notPrevented).toBe(false); // preventDefault was called
-    await waitFor(() => expect(onFileOpened).toHaveBeenCalledWith("bbb22222"));
+    await waitFor(() => expect(onFileOpened).toHaveBeenCalledWith("bbb22222", ""));
     expect(openRelativeFile).toHaveBeenCalledWith("default", "aaa11111", "next.md");
+  });
+
+  describe("to a heading in another file", () => {
+    beforeEach(() => {
+      vi.mocked(fetchFileContent).mockResolvedValue({
+        content: "[Second section](next.md#second-section)",
+        baseDir: "/repo",
+      });
+    });
+
+    it("keeps the hash in the href", async () => {
+      renderViewer();
+      const link = await screen.findByRole("link", { name: "Second section" });
+      expect(link).toHaveAttribute("href", "/?from=aaa11111&open=next.md#second-section");
+    });
+
+    it("sends the path to the server and the hash to onFileOpened", async () => {
+      const onFileOpened = vi.fn();
+      renderViewer({ onFileOpened });
+      const link = await screen.findByRole("link", { name: "Second section" });
+
+      fireEvent.click(link);
+
+      await waitFor(() => expect(onFileOpened).toHaveBeenCalledWith("bbb22222", "#second-section"));
+      expect(openRelativeFile).toHaveBeenCalledWith("default", "aaa11111", "next.md");
+    });
   });
 
   it("lets the browser handle a Cmd/Ctrl click natively", async () => {

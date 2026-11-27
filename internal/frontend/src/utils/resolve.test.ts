@@ -22,13 +22,15 @@ describe("resolveLink", () => {
     expect(resolveLink("other.md", "default", "e")).toEqual({
       type: "markdown",
       hrefPath: "other.md",
+      hash: "",
     });
   });
 
-  it("strips anchor from markdown links", () => {
+  it("splits the anchor off markdown links", () => {
     expect(resolveLink("readme.md#title", "default", "e")).toEqual({
       type: "markdown",
       hrefPath: "readme.md",
+      hash: "#title",
     });
   });
 
@@ -36,6 +38,7 @@ describe("resolveLink", () => {
     expect(resolveLink("docs/guide.md", "default", "c")).toEqual({
       type: "markdown",
       hrefPath: "docs/guide.md",
+      hash: "",
     });
   });
 
@@ -43,6 +46,7 @@ describe("resolveLink", () => {
     expect(resolveLink("component.mdx", "default", "e")).toEqual({
       type: "markdown",
       hrefPath: "component.mdx",
+      hash: "",
     });
   });
 
@@ -50,13 +54,15 @@ describe("resolveLink", () => {
     expect(resolveLink("docs/intro.mdx", "default", "c")).toEqual({
       type: "markdown",
       hrefPath: "docs/intro.mdx",
+      hash: "",
     });
   });
 
-  it("strips anchor from .mdx links", () => {
+  it("splits the anchor off .mdx links", () => {
     expect(resolveLink("page.mdx#section", "default", "e")).toEqual({
       type: "markdown",
       hrefPath: "page.mdx",
+      hash: "#section",
     });
   });
 
